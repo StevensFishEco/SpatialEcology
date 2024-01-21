@@ -1,0 +1,355 @@
+---
+title: "Lab2_Assignment"
+output: html_document
+date: "2024-01-16"
+---
+
+
+### Inset Map ###
+
+Below, I am loading packages and receiver sites.
+
+```{r}
+require(tidyverse)
+require(sf)
+require(tigris)
+require(geodata)
+require(terra)
+require(colorspace)
+require(tidyterra)
+require(ggnewscale)
+require(cowplot)
+require(ggspatial)
+require(ggpubr)
+require(gridExtra)
+
+
+
+siteData = read.csv("Proposed_SUR_Locations.csv")
+```
+
+Lets plot the sites.
+
+```{r}
+ggplot(siteData, aes(y=Longitude, x=Latitude))+
+  geom_point()
+```
+
+Time to get geo-spatial.
+
+```{r}
+siteSf = st_as_sf(siteData, coords=c('Latitude', 'Longitude'), crs='+proj=longlat +datum=WGS84 +no_defs')
+plot(siteSf)
+```
+
+Lets highlight the watershed boundaries and river lines.
+
+```{r}
+
+# read in HUC boundaries
+Basin <- st_read("Shape/WBDHU6.shp")
+
+# boom, just a shape
+plot(st_geometry(Basin))
+
+# whats the projection
+st_crs(Basin)$proj4string
+
+# read in study rivers
+Rivers <- st_read("Shape/NHDFlowline.shp")
+
+# needed to remove Z and M ranges from rivers shapefle
+Rivers = st_zm(Rivers)
+
+# looking good on my end
+plot(st_geometry(Rivers))
+
+# whats the projection
+st_crs(Rivers)$proj4string
+
+# read in an extra file for important unnamed stream segments (separate file because I had to hand delineate these segments instead of a simply query selection used in ArcMap for named segments)
+Segments <- st_read("Shape/NHDArea.shp")
+
+# needed to remove Z and M ranges from rivers shapefle
+Segments = st_zm(Segments)
+
+# looking good on my end
+plot(st_geometry(Segments))
+
+# whats the projection
+st_crs(Segments)$proj4string
+
+# read in lakes 
+Lakes <- st_read("Shape/NHDWaterbody.shp")
+
+# needed to remove Z and M ranges from lakes shapefle
+Lakes = st_zm(Lakes)
+
+# looking good on my end
+plot(st_geometry(Lakes))
+
+# whats the projection
+st_crs(Lakes)$proj4string
+
+#what do we have so far. Projs differ atm, but its looking good.
+ggplot()+
+  geom_sf(data = st_geometry(Basin), fill = "white") +
+  geom_sf(data = st_geometry(Rivers), color = "darkblue") +
+  geom_sf(data = st_geometry(Segments), color = "darkblue") +
+  geom_sf(data = st_geometry(Lakes), fill = "darkblue", color = "darkblue") +
+  geom_sf(data = siteSf)
+```
+
+Here is the state of Mississippi.
+
+```{r}
+mississippi = states() %>% 
+  filter(NAME=='Mississippi')
+
+#whats the projection
+st_crs(mississippi)$proj4string
+```
+
+
+These two projection systems need to be the same.
+
+```{r}
+mississippi = st_transform(mississippi, st_crs(siteSf))
+```
+
+
+Lets throw everything together for the small map (hint: it is very ugly at the moment).
+
+```{r}
+ggplot()+
+  geom_sf(data = st_geometry(mississippi), fill = "white") +
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = st_geometry(Rivers), color = "darkblue") +
+  geom_sf(data = st_geometry(Segments), color = "darkblue") +
+  geom_sf(data = st_geometry(Lakes), fill = "darkblue", color = "darkblue") +
+  geom_sf(data = siteSf)
+```
+
+### Study Site Map ###
+
+For my study area map, I am also going to add terrestrial elevation to better visualize the region as a Mississippi River delta floodplain. Additionally, I am hoping that the elevation map will pick up on the extensive levee network in the region (Update: the elevation raster does not pick up the levee network). To start with, I will download the elevation data and crop it to the state of Mississippi.
+
+```{r}
+usaElev = elevation_30s(country='USA', path=tempdir())
+
+
+mississippi = st_transform(mississippi, st_crs(usaElev))
+missElev = crop(usaElev, mississippi)
+
+ggplot()+
+  geom_spatraster(data = missElev)+
+  scale_fill_gradient(low = 'white', high = 'black', na.value = '#99CCFF', labs(fill = 'Elevation'))+
+  geom_sf(data = st_geometry(mississippi), fill = NA, color = "white")
+```
+
+Now lets crop terrestrial elevation to the state boundary.
+
+```{r}
+missElev = mask(missElev, mississippi)
+
+ggplot()+
+  geom_spatraster(data = missElev)+
+  scale_fill_gradient(low = 'white', high = 'black', na.value = NA, labs(fill = 'Elevation'))
+
+```
+
+Now lets crop terrestrial elevation to the study area.
+
+```{r}
+
+Basin = st_transform(Basin, st_crs(mississippi))
+BasinElevation = crop(missElev, Basin)
+BasinElevation = mask(BasinElevation, Basin)
+
+
+ggplot()+
+  geom_spatraster(data = BasinElevation)+
+  scale_fill_gradient(low = 'white', high = 'black', na.value = NA, labs(fill = 'Elevation'))
+
+```
+
+### Make the primary map
+
+Lets see what projection everything is in.
+
+```{r}
+crs(BasinElevation, proj = T)
+
+crs(Basin, proj = T)
+
+crs(mississippi, proj = T)
+
+st_crs(siteSf)$proj4string
+
+crs(Rivers, proj = T)
+Rivers = st_transform(Rivers, st_crs(mississippi))
+crs(Rivers, proj = T)
+
+crs(Lakes, proj = T)
+Lakes = st_transform(Lakes, st_crs(mississippi))
+crs(Lakes, proj = T)
+
+crs(Segments, proj = T)
+Segments = st_transform(Segments, st_crs(mississippi))
+crs(Segments, proj = T)
+
+```
+
+Lets go zoomed out
+
+```{r}
+zoomedOut = ggplot()+
+  geom_sf(data = mississippi, fill = "white", color = "black", linewidth = 0.5)+
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.1)
+
+zoomedOut
+```
+
+Now to clean it up a litte bit...
+
+```{r}
+zoomedOut = zoomedOut +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) #Gets rid of most of the colors
+  #Removes the frame around the graph
+
+zoomedOut
+```
+
+Lets go zoomed in
+
+```{r}
+zoomedIn = ggplot()+
+  geom_spatraster(data = BasinElevation)+
+  scale_fill_gradient(low = 'white', high = 'black', na.value = NA, labs(fill = 'Elevation'))+
+  geom_sf(data = Basin, fill = NA, color = "black", linewidth = 0.5) 
+
+zoomedIn
+```
+
+Clean it up...
+
+```{r}
+zoomedIn = zoomedIn+
+  new_scale_fill()+
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-91.0, -90.0, -89.0), labels = scales::label_number(accuracy = 0.1)) +
+  scale_y_continuous(breaks = c(33.0, 34.0, 35.0), labels = scales::label_number(accuracy = 0.1))
+
+zoomedIn
+```
+
+Now lets add a bunch of stuff to our blank canvas...
+
+```{r}
+
+zoomedIn = zoomedIn +
+  geom_sf(data = Rivers, color = "darkblue") +
+  geom_sf(data = st_geometry(Segments), color = "darkblue", fill = "darkblue") +
+  geom_sf(data = st_geometry(Lakes), color = "darkblue", fill = "darkblue") +
+  geom_sf(data = siteSf, aes(pch=Description), color='red') +
+  scale_shape_manual(values=c(19), name='', labels = "Receivers") +
+  geom_rect(aes(xmin = -90.27, xmax = -90.14, ymin = 33.5, ymax = 33.6), linewidth = 1, color = "black", fill = NA) +
+  geom_rect(aes(xmin = -91.05, xmax = -90.80, ymin = 32.4, ymax = 32.6), linewidth = 1, color = "black", fill = NA) +
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  annotation_north_arrow(location = "tl", which_north = "true", style = north_arrow_fancy_orienteering())
+ 
+
+  
+zoomedIn
+```
+
+
+### Putting the primary map together
+
+```{r}
+
+map_with_inset <-
+  ggdraw(zoomedIn) +
+  draw_plot(zoomedOut, x = 0.47, y = 0.12, width = 0.25, height = 0.35, halign = 0, valign = 0)
+
+map_with_inset
+
+## Note: the inset map does not look good at the moment, but that's because it got wonky later with ggarrange, so I have modified it to look better in the end product rather than now. This will come up several times later.
+```
+
+### Now lets break these apart to look at the upper and lower array specifically.
+
+First, I don't think elevation raster is needed for these panels as the extent will all be in the floodplain, and thus, relatively small differences in elevation. Additionally, the map will not change in orientation, so additional north arrows are not needed. So, lets remake the zoomedIn map, but without elevation and north arrow...
+
+```{r}
+zoomedInClean = ggplot() +
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.5) +
+  geom_sf(data = Rivers, color = "darkblue") +
+  geom_sf(data = st_geometry(Segments), color = "darkblue", fill = "darkblue") +
+  geom_sf(data = st_geometry(Lakes), color = "darkblue", fill = "darkblue") +
+  geom_sf(data = siteSf, color='red') +
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1))
+
+
+zoomedInClean
+```
+
+Now, lets isolate the upper array. We'll also label the rivers in this step (this was tedious, but I could not find an automated way that did not require creating additional data files with lat/long and labels for each river).
+
+
+```{r}
+
+upper_array <- zoomedInClean +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  geom_text(x = -90.165, y = 33.58, aes(label = "Yalobusha River"), angle = 50, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.20, y = 33.527, aes(label = "Yazoo River"), angle = 0, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.232, y = 33.57, aes(label = "Tallahatchie River"), angle = 55, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_label(x = -90.165, y = 33.502, aes(label = "Upper Array"), angle = 0, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  scale_x_continuous(limits = c(-90.27, -90.14)) +
+  scale_y_continuous(limits = c(33.5, 33.6)) 
+
+upper_array
+
+```
+
+Upper array looked good. How about the lower array...
+
+```{r}
+
+lower_array <- zoomedInClean  +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  geom_text(x = -90.85, y = 32.475, aes(label = "Yazoo River"), angle = 40, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.84, y = 32.53, aes(label = "Big Sunflower River"), angle = 60, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -91.00, y = 32.563, aes(label = "Steele Bayou"), angle = 90, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -91.01, y = 32.475, aes(label = "Eagle Lake"), angle = 350, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_label(x = -90.85, y = 32.405, aes(label = "Lower Array"), angle = 0, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  scale_x_continuous(limits = c(-91.05, -90.8)) +
+  scale_y_continuous(limits = c(32.4, 32.6))
+
+lower_array
+
+```
+
+### Now, lets put it all together...
+
+```{r}
+
+ggarrange(map_with_inset,                                                 # First row with basin
+          ggarrange(upper_array, lower_array, nrow = 2, labels = c("B", "C")), # Second col with confluences
+          ncol = 2, 
+          widths = c(2,1.3),
+          labels = "A"                                      
+          ) 
+```
+
+
+### Short paragraph for assignment
+
+This map depicts the Yazoo River basin in northwest Mississippi. My project involves tagging three species of large-river fish within this system. Stationary receivers will be used to track movement and assess passage and transitions between the mainstem Yazoo River and several large tributaries (Steele Bayou, Big Sunflower River, Yalobusha River, and Tallahatchie River) in relation to a system of water-control structures in the watershed. Map A shows these rivers along with the proposed locations of the stationary receivers. Maps B and C are confluences of interest in my study. Map C is the lower array that centers around a water-control structure at the mouth of Steele Bayou/Big Sunflower River (i.e., the altered confluence). Map B is the upper array that centers around a relatively undistrubed confluence (Tallahatchie/Yalobusha/Yazoo rivers confluence) that will serve as a reference confluence to compare against fish passage and transitions at the altered confluence. I created the receiver location points via lat/long coordinates. Basin, rivers, and lakes shapefiles were downloaded from the National Hydrography Database (NHD) maintained by the USGS. 
