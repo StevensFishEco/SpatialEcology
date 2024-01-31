@@ -334,3 +334,8 @@ ggarrange(map_with_inset,                                                 # Firs
 ### Short paragraph for assignment
 
 This map depicts the Yazoo River basin in northwest Mississippi. My project involves tagging three species of large-river fish within this system. Stationary receivers will be used to track movement and assess passage and transitions between the mainstem Yazoo River and several large tributaries (Steele Bayou, Big Sunflower River, Yalobusha River, and Tallahatchie River) in relation to a system of water-control structures in the watershed. Map A shows these rivers along with the proposed locations of the stationary receivers. Maps B and C are confluences of interest in my study. Map C is the lower array that centers around a water-control structure at the mouth of Steele Bayou/Big Sunflower River (i.e., the altered confluence). Map B is the upper array that centers around a relatively undistrubed confluence (Tallahatchie/Yalobusha/Yazoo rivers confluence) that will serve as a reference confluence to compare against fish passage and transitions at the altered confluence. I created the receiver location points via lat/long coordinates. Basin, rivers, and lakes shapefiles were downloaded from the National Hydrography Database (NHD) maintained by the USGS. 
+
+
+# Grade
+
+$\color{red}{\text{Absolutely outstanding, Jeff. Stellar map.}}$
