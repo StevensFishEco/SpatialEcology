@@ -90,6 +90,8 @@ Answer Challenge 1 with your written text here.
 
 As you scale up the grain size, the mean stays the same while the variance decreases. The mean is continuous because we told it to average the values of the original raster in the aggregate function. Essentially, we are averaging the same values over varying bin sizes. Of course the overall mean will stay the same with this function. The variance decreases for much of the same reason. By averaging the fine values over increasingly large bins,  we lose the large spread of values seen in finer grain size. I will admit that, at first, I did not understand why the pattern was one of exponential decay (as opposed to linear), but then I realized that since were working with two dimensions, the squared term would explain this pattern. Its interesting to think about because, in a perfect world, the aquatic environment would be a cubic relationship. That is interesting from a mathematical standpoint but probably less interesting from a biological view.
 
+$\color{red}{\text{Awesome stuff. +4}}$
+
 ## Challenge 2 (4 points)
 
 **Identify a situation in which you might use a summary function other than the mean to calculate new cell values when you scale up the grain of a raster (e.g., median, mode, minimum, maximum, etc.). Repeat the effort from Challenge 1 using this alternate function. Again, create two scatterplots showing how the mean and variance values of the raster change as you scale up the cell size by factors of 2, 5, and 10. Do you see a similar pattern? Compare and contrast your findings with those from Challenge 1.**
@@ -152,6 +154,8 @@ Answer Challenge 2 with your written text here.
 
 A situation where you may need to use the mode function would be if the data is categorical (like habitat type). Variance follows the same pattern as before with decreasing variance as the grain is increased. This makes sense for the same reasons as before. By increasing the grain, you have the ability to dampen the probability of outlying data inflating the variance. Unlike before, however, the mean value does not stay constant and fluctuates a decent amount (up to 20%). This is likely do to chance as grain increases because the probability of a "block" of values containing duplicate values would increase as that block gets larger. I think that the fact that the aggregate function selects the lowest value if no true mode exists likely explains the drop in mean at the factor = 2 scale. With the slight increase in scale, the probability of a true mode is relatively low and the function would select the smallest value in that "block". However, as the grain increased, the probability of a true mode existing increased and the mean value gets closer to the original mean value.
 
+$\color{red}{\text{Nice work. +4}}$
+
 ## Challenge 3 (2 points)
 
 **Recall that before we calculated forest cover, we cropped our NLCD raster to minimize its size and the computing effort necessary from our poor little computers. How might that affect our ability to evaluate the scale at which five-lined skinks respond to forest cover? Why?**
@@ -159,6 +163,8 @@ A situation where you may need to use the mode function would be if the data is 
 Place your answers here.
 
 By cropping the raster to arbitrary dimensions, you would lose the ability to properly increase grain size along the exterior cells. Of course, if you allowed for a sizable buffer, the majority of these issues would be dampened, but not eliminated. I wonder if by changing the study area "box" that you crop your raster to, if it would actually change the order in which the function calculates the summary stats when increasing in grain size. I think that it would and this would be a methodological variable that would be almost impossible to control without scaling the study area buffer by the actual distances of interest around each sampling point. 
+
+$\color{red}{\text{I'm not sure I followed the latter part of this, but you got the gist. If we add 10 km to the bounding box, we can't calculate buffers around points at distances greater than 10 km. +2}}$
 
 ## Challenge 4 (4 points)
 
@@ -342,6 +348,8 @@ Place your answers here.
 
 So, acting as if the coordinate is a variable of interest, I think its interesting that the correlation between coordinate and forest proportion increases as grain increases. I do not know exactly what would cause that trend, but it has to be related to the "clumpiness" of the three broader study areas that does not allow for the capture of broader forest cover at small radii. Of course, the answer you are looking for here is that the different distances are highly correlated and distances closer in size are more correlated than distances less similar in size. This makes sense as circles more similar in size have more of the same forest features than circles less similar in size.
 
+$\color{red}{\text{Yeah, I meant for y'all to cut that coordinate variable out, but no big deal. Otherwise, spot on. +4}}$
+
 ## Challenge 5 (4 points)
 
 **Fit 8 logistic regression models (a null model and one for each of the 7 forest scales). Compare these models using AICc. Which scale do you think represents the critical or characteristic scale at which forest cover affects skink presence? Is this scale clearly better than the others, or is there some ambiguity? What are some mechanisms by which forest cover could affect skink presence at this scale? What is your overall conclusion regarding how forest cover affects skink presence (i.e., take a look at the betas)?**
@@ -383,6 +391,8 @@ Place your answer to the questions here.
 
 AICc selected the 2 km scale as the critical scale and I have no reason to argue against that being the best scale. However, the four largest scales (2 km, 3 km, 4 km, and 5 km) all performed well (delta AICc < 2) with 2 km and 4 km performing almost the same (model weights of 0.36 and 0.30, respectively). To choose which scale is actually a better predictor of presence, you would need to know movement and home range data for the species or possibly the distribution of critical resources in that forested area (but then, you would probably just use the resource distribution instead of forest). Overall, I don't know if there is enough to biologically justify which of those scales to select, but statistics support 2 km.
 
+$\color{red}{\text{All true. I was hoping that you would identify some mechanisms that could be acting at this spatial scale, and you've danced around it. I also wanted to hear you say that forest cover has a positive effect on probability of occupancy of skinks across scales. That's why we explored the betas. +3}}$
+
 ## Challenge 6 (2 points)
 
 **If you encounter ambiguity in identifying the characteristic scale of an effect, can you come up with a clever way to condense the information in the multi-scale variables into just one or two? When might it be ok to include two covariates in the same model (think multiple regression) that represent the same ecological feature measured at different scales (e.g., forest cover at 1 km AND forest cover at 5 km in the same model)? I can think of both a biological and a statistical answer to this question.**
@@ -390,3 +400,5 @@ AICc selected the 2 km scale as the critical scale and I have no reason to argue
 Place your answer to the questions here.
 
 I think that you can come up with whatever type of variable that you want as long as you can defend it as ecologically sound. It might be more justifiable to try some type of model averaging approach opposed to combining the covariates, though. I would include both scales in the same model if there are competing hypotheses as to why each scale would influence the ecological feature that you are interested in. For example, do you use average movement over the course of a lifetime, annual home range, or daily movement ability? Furthermore, if there is a situation in which the two (or more) scales arent significantly correlated, then there would be no statistical reason not to include multiple scales.
+
+$\color{red}{\text{Perfect. +2}}$
