@@ -1,0 +1,765 @@
+---
+title: "Lab 4 Assignment - Landcover"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+
+```{r}
+# Load your required R packages here.
+
+rm(list=ls())
+require(Voss)
+require(tidyverse)
+require(terra)
+require(FedData)
+require(sf)
+require(tidyterra)
+require(landscapemetrics)
+require(car)
+require(ggplot2)
+require(ggpubr)
+
+
+
+
+```
+
+## Challenge 1 (4 points)
+
+**The landscapemetrics package has functions for calculating 12 patch-level metrics. Calculate all 12 of these for every forest patch in our nlcdSimple raster (using the 8-direction rule). This will result in 12 unique values associated with each forest patch. Use the chart.Correlation() function from the PerformanceAnalytics package to examine the correlation among all 12 of these variables. What patterns do you notice, and what do they tell you about the uniqueness or redundancy of the patch-level metrics you calculated?**
+
+```{r, warning=FALSE}
+# Lets get the data in here
+
+studyArea = st_read('/vsicurl/https://github.com/ValenteJJ/SpatialEcology/raw/main/Week4/studyArea.shp')
+nlcd = get_nlcd(studyArea, label='AlLandscape', year=2011)
+
+# Lets plot it
+
+plot(nlcd)
+
+# Modify categories
+
+nlcdSimple = nlcd
+nlcdSimple[nlcdSimple==11] = 1 #Wet areas are a 1 now
+nlcdSimple[nlcdSimple %in% c(21, 22, 23, 24)] = 2 #All developed areas are 2
+nlcdSimple[nlcdSimple %in% c(31, 52)] = 3 #Barren land and shrub/scrub are 3
+nlcdSimple[nlcdSimple %in% c(41,42,43)] = 4 #All forest types are 4
+nlcdSimple[nlcdSimple == 71] = 5 #Grassland is 5
+nlcdSimple[nlcdSimple %in% c(81,82)] = 6 #And agriculture is 6
+
+# Give these numbers category names
+tmp = data.frame('ID' = c(1, 2, 3, 4, 5, 6),
+                 'category' = c('wetland', 'developed', 'open', 'forest', 'grassland', 'agriculture'))
+nlcdSimple = categories(nlcdSimple, value=tmp)
+
+# And plot the new raster
+ggplot(nlcdSimple, aes(x=x, y=y, fill=category)) +
+  geom_raster()+
+  scale_fill_manual(values=c('blue', 'black', 'gray', 'darkolivegreen', 'orange', 'yellow'))
+
+# We need to isolate what the habitat patches actually are
+
+forest = nlcdSimple %>% 
+  setValues(NA)
+  
+forest[nlcdSimple ==4] = 1
+
+plot(forest)
+
+forestPatchId = patches(forest, directions=8, zeroAsNA=T, allowGaps=F)
+
+plot(forestPatchId)
+
+# Lets calculate some stuff
+
+patchArea8 = lsm_p_area(forest, directions=8) # AREA is an 'Area and edge metric' and equals the area of each patch in hectares. The lower limit of AREA is limited by the resolution of the input raster, i.e. AREA can't be smaller than the resolution squared (in hectares). It is one of the most basic, but also most important metrics, to characterise a landscape. The metric is the simplest measure of composition.
+
+patchCAI8 = lsm_p_cai(forest, directions=8) # CAI is a 'Core area metric'. It equals the percentage of a patch that is core area. A cell is defined as core area if the cell has no neighbour with a different value than itself (rook's case). It describes patch area and shape simultaneously (more core area when the patch is large and the shape is rather compact, i.e. a square). Because the index is relative, it is comparable among patches with different area.
+
+patchCircle8 = lsm_p_circle(forest, directions=8) # CIRCLE is a 'Shape metric'. The metric is the ratio between the patch area and the smallest circumscribing circle of the patch. The diameter of the smallest circumscribing circle is the 'diameter' of the patch connecting the opposing corner points of the two cells that are the furthest away from each other. The metric characterises the compactness of the patch and is comparable among patches with different area.
+
+patchContig8 = lsm_p_contig(forest, directions=8) # CONTIG is a 'Shape metric'. It asses the spatial connectedness (contiguity) of cells in patches. CONTIG coerces patch values to a value of 1 and the background to NA. A nine cell focal filter matrix is then used to weight orthogonally contiguous pixels more heavily than diagonally contiguous pixels. Therefore, larger and more connections between patch cells in the rookie case result in larger contiguity index values.
+
+patchCore8 = lsm_p_core(forest, directions=8) # CORE is a 'Core area metric' and equals the area within a patch that is not on the edge of it. A cell is defined as core area if the cell has no neighbour with a different value than itself (rook's case). It describes patch area and shape simultaneously (more core area when the patch is large and the shape is rather compact, i.e. a square).
+
+patchEnn8 = lsm_p_enn(forest, directions=8) # ENN is an 'Aggregation metric'. The distance to the nearest neighbouring patch of the same class i. The distance is measured from edge-to-edge. The range is limited by the cell resolution on the lower limit and the landscape extent on the upper limit. The metric is a simple way to describe patch isolation.
+
+patchFrac8 = lsm_p_frac(forest, directions=8) # FRAC is a 'Shape metric'. The index is based on the patch perimeter and the patch area and describes the patch complexity. Because it is standardized, it is scale independent, meaning that increasing the patch size while not changing the patch form will not change the ratio.
+
+patchGyrate8 = lsm_p_gyrate(forest, directions=8) # GYRATE is an 'Area and edge metric'. The distance from each cell to the patch centroid is based on cell center to centroid distances. The metric characterises both the patch area and compactness.
+
+patchNcore8 = lsm_p_ncore(forest, directions=8) # NCORE is a 'Core area metric'. A cell is defined as core if the cell has no neighbour with a different value than itself (rook's case). The metric counts the disjunct core areas, whereby a core area is a 'patch within the patch' containing only core cells. It describes patch area and shape simultaneously (more core area when the patch is large, however, the shape must allow disjunct core areas). Thereby, a compact shape (e.g. a square) will contain less disjunct core areas than a more irregular patch.
+
+patchPara8 = lsm_p_para(forest, directions=8) # PARA is a 'Shape metric'. It describes the patch complexity in a straightforward way. However, because it is not standarised to a certain shape (e.g. a square), it is not scale independent, meaning that increasing the patch size while not changing the patch form will change the ratio.
+
+patchPerim8 = lsm_p_perim(forest, directions=8) # PERIM is an 'Area and edge metric'. It equals the perimeter of the patch including also the edge to the landscape boundary. The metric describes patch area (larger perimeter for larger patches), but also patch shape (large perimeter for irregular shapes).
+
+patchShape8 = lsm_p_shape(forest, directions=8) # SHAPE is a 'Shape metric'. It describes the ratio between the actual perimeter of the patch and the square root of patch area and thus adjusting for a square standard. Thus, it is a simple measure of shape complexity.
+
+# Put it all together and order by metric type. 
+
+# Area, Gyrate, Perim = "Area and edge" metrics
+# CAI , Core, Ncore = "Core area" metrics
+# Circle, Contig, Frac, Para, Shape = "Shape" metrics
+# Enn = "Aggregation" metric
+
+patchMetrics8 <- data.frame(ID = patchArea8$id, Area = patchArea8$value, Gyrate = patchGyrate8$value, Perim = patchPerim8$value, CAI = patchCAI8$value, Core = patchCore8$value, Ncore = patchNcore8$value, Circle = patchCircle8$value, Contig = patchContig8$value, Frac = patchFrac8$value, Para = patchPara8$value, Shape = patchShape8$value, Enn = patchEnn8$value)
+
+# Correlation matrix
+
+PerformanceAnalytics::chart.Correlation(patchMetrics8, histogram=F)
+
+# My own little exploration into the multicolinearity. I am just going to remove the variable with the highest VIF until all remaining terms have VIF < 10 (standard cut-off)
+
+
+vif(lm(ID ~ Area + Gyrate + Perim + CAI + Core + Ncore + Circle + Contig + Frac + Para + Shape + Enn, data = patchMetrics8)) # Full
+
+vif(lm(ID ~ Gyrate + Perim + CAI + Core + Ncore + Circle + Contig + Frac + Para + Shape + Enn, data = patchMetrics8)) # Area removed
+
+vif(lm(ID ~ Gyrate + Perim + CAI + Core + Ncore + Circle + Frac + Para + Shape + Enn, data = patchMetrics8)) # Contig removed
+
+vif(lm(ID ~ Gyrate + CAI + Core + Ncore + Circle + Frac + Para + Shape + Enn, data = patchMetrics8)) # Perim removed
+
+vif(lm(ID ~ Gyrate + CAI + Core + Ncore + Circle + Frac + Para + Enn, data = patchMetrics8)) # Shape removed
+
+vif(lm(ID ~ CAI + Core + Ncore + Circle + Frac + Para + Enn, data = patchMetrics8)) # Gyrate removed
+
+# All VIFs are under 10
+
+```
+
+Answer Challenge 1 with your written text here.
+
+So there is obviously a lot of colinearity among these metrics and they seem pretty redundant. However, much of this colinearity can be attributed to metrics that quantify a similar process/pattern (i.e., metric type). This is to be expected because, while different metrics may highlight various aspects of a process/pattern, the values from site to site should change similarly among the metrics regardless of what exactly they are highlighting. For example, you could calculate average monthly temperatures across multiple sites. While these values highlight different aspects of climate, patterns across sites are likely to remain consistent (e.g., the hottest sites in June will probably be the hottest sites in July). The high correlation between metrics of different types is also interesting as many of these would be considered highly correlated (>0.6). Since all of the metrics are working off of the same base data, I guess this correlation is not all that surprising. Interestingly, removing just five of the 12 variables lowered VIFs below accepted thresholds. If some of these removed variables are of special interest (e.g., AREA or PERIM), perhaps you could isolate the least "interesting" variables for a specific project and see a similar decline in VIF.
+
+
+## Challenge 2 (4 points)
+
+**In our lab, we used the 8-direction or "queen" rule to delineate patches. Using the nlcdSimple raster we created, explore the differences in patch characteristics if you were to use the 4-direction or "rook" rule for delineating patches. Calculate the following class-level metrics for forest cover for both the queen and rook patch delineation rules: number of patches, mean patch size, standard deviation in patch size, nearest-neighbor distance, and total edge length. What patterns do you notice? When might it be appropriate to use one rule vs. the other?**
+
+```{r, warning=FALSE}
+# So here is what we are working with
+
+ggplot(nlcdSimple, aes(x=x, y=y, fill=category)) +
+  geom_raster()+
+  scale_fill_manual(values=c('blue', 'black', 'gray', 'darkolivegreen', 'orange', 'yellow'))
+
+# Calculate some stuff
+
+NP8 <- lsm_c_np(nlcdSimple, directions=8)
+NP4 <- lsm_c_np(nlcdSimple, directions=4)
+
+AM8 <- lsm_c_area_mn(nlcdSimple, directions=8)
+AM4 <- lsm_c_area_mn(nlcdSimple, directions=4)
+
+ASD8 <- lsm_c_area_sd(nlcdSimple, directions=8)
+ASD4 <- lsm_c_area_sd(nlcdSimple, directions=4)
+
+ENN8 <- lsm_c_enn_mn(nlcdSimple, directions=8)
+ENN4 <- lsm_c_enn_mn(nlcdSimple, directions=4)
+
+TE8 <- lsm_c_te(nlcdSimple, directions=8)
+TE4 <- lsm_c_te(nlcdSimple, directions=4)
+
+# Put it all in a dataframe (I know this isn't the best method overall, but it will work for only 6 classes)
+
+classCats = data.frame(Class = c(1, 2, 3, 4, 5, 6), PatchNumber4 = NP4$value , PatchNumber8 = NP8$value, AreaMean4 = AM4$value, AreaMean8 = AM8$value, AreaSD4 = ASD4$value, AreaSD8 = ASD8$value, NearestNeighbor4 = ENN4$value, NearestNeighbor8 = ENN8$value, TotalEdge4 = TE4$value, TotalEdge8 = TE8$value)
+
+#, Category = c('Wetland', 'Developed', 'Open', 'Forest', 'Grassland', 'Agriculture')
+PerformanceAnalytics::chart.Correlation(classCats, histogram=F)
+
+# Lets makes some basic graphs as if the values were paired estimates (they kind of are). I've chosen a scatterplot-esc approach as opposed to bar plot mainly because I didn't want to flip my data frame into true paired estimates (i.e., a column representing Queen or Rook to group by).
+
+classCats$Category <- c("Wetland", "Developed", "Open", "Forest", "Grassland", "Agriculture")
+
+# Nifty little theme for nice looking plots
+
+theme_scatter <- function() {
+  theme_classic(base_size = 13, base_family = "Times New Roman")%+replace%
+    theme(axis.line = element_line(size = 1),
+          axis.ticks = element_line(size = 1),
+          axis.text.y = element_text(color = "black"),
+          axis.text.x = element_text(color = "black"),
+          legend.position = c(0.9,0.3), plot.margin = unit(c(t = 0.1, r = 0.3, b = 0.5,l = 0.5), 'lines'))}
+
+# Number of patches
+
+NPfig <- ggplot(data = classCats, aes(x = PatchNumber4, y = PatchNumber8)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 90, 45), lim = c(0, 90)) +
+  scale_y_continuous(breaks = seq(0, 90, 45), lim = c(0, 90)) +
+  xlab("PN (Rook)") + 
+  ylab("PN (Queen)")
+
+# Mean patch size
+
+MPSfig <- ggplot(data = classCats, aes(x = AreaMean4, y = AreaMean8)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 16, 8), lim = c(0, 16)) +
+  scale_y_continuous(breaks = seq(0, 16, 8), lim = c(0, 16)) +
+  xlab("MPS (Rook)") + 
+  ylab("MPS (Queen)")
+
+# Patch size variation
+
+ASDfig <- ggplot(data = classCats, aes(x = AreaSD4, y = AreaSD8)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 40, 20), lim = c(0, 40)) +
+  scale_y_continuous(breaks = seq(0, 40, 20), lim = c(0, 40)) +
+  xlab("ASD (Rook)") + 
+  ylab("ASD (Queen)")
+
+# Nearest Neighbor
+
+ENNfig <- ggplot(data = classCats, aes(x = NearestNeighbor4, y = NearestNeighbor8)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(60, 160, 50), lim = c(60, 160)) +
+  scale_y_continuous(breaks = seq(60, 160, 50), lim = c(60, 160)) +
+  xlab("ENN (Rook)") + 
+  ylab("ENN (Queen)")
+
+# Total Edge Length
+
+TEfig <- ggplot(data = classCats, aes(x = TotalEdge4, y = TotalEdge8)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 90000, 45000), lim = c(0, 90000)) +
+  scale_y_continuous(breaks = seq(0, 90000, 45000), lim = c(0, 90000)) +
+  xlab("TE (Rook)") + 
+  ylab("TE (Queen)")
+
+# Lets combine them
+
+Classfig <- ggarrange(NPfig, MPSfig, ASDfig, ENNfig, TEfig,  
+                   labels = c("A", "B", "C", "D", "E"),
+                   ncol = 3, nrow = 2, common.legend = TRUE)
+
+Classfig
+```
+
+Answer Challenge 2 with your written text here.
+
+So, again, there is a lot of colinearity among these metrics. Colinearity exists not only between the same metrics with different cases (e.g., queen and rook), but among different metrics following both cases This makes sense for the same reasons as with the patch-level metrics. Additionally, the value of each metric can vary quite a bit depending on which case you use to calculate it. Broadly, the queen case results in fewer number of patches, larger patch size, higher variance in patch size, and greater distances between patches of the same type. This makes sense as both cases have the same data, so fewer patches would have to result in those patches being larger. Fewer, larger patches are always going to lead to higher variance in patch size (assuming that the underlying data do not change). Fewer patches are also going to lead to larger distances between those patches, especially considering that the patched "split" by changing to from queen to rook are very close to the "patch" that it was just split from. Interestingly, total edge remained the same for both cases. I read the vignette on landscapemetrics and it seems like they calculate edge based on any cell edge that is not directly adjoining a cell of the same type. Therefore, I do not know if that function actually has the ability to separate edge based on the "queen case" since the literal side of the cell is not actually "touching" the adjoining corner cell. This makes sense with the results above, but I may have calculated it wrong. When deciding to use one case or the other, I think it just depends on your study animal, system, and what behavior or characteristic you are interested in. For example, if your study animal is highly mobile, it might make sense to use the queen case. The queen case would also be applicable if the majority of your background matrix can easily be traveled through (agriculture versus heavy development). However, if you are interested in a species that is not very mobile or the matrix is inhospitable, then the rook case is probably more applicable.
+
+## Challenge 3 (4 points)
+
+
+**Using the same zoomed-in study area that we used in the lab, download NLCD raster data for the years 2001 and 2019 and simplify these rasters into 6 landcover categories (wet, developed, barren, forest, grassland, and agriculture). Plot these two rasters. What are some of the initial changes you notice between 2001 and 2019?**
+
+```{r}
+# 2001
+
+nlcd2001 = get_nlcd(studyArea, label='AlLandscape', year=2001)
+
+# Modify categories
+
+nlcdSimple2001 = nlcd2001
+nlcdSimple2001[nlcdSimple2001==11] = 1 #Wet areas are a 1 now
+nlcdSimple2001[nlcdSimple2001 %in% c(21, 22, 23, 24)] = 2 #All developed areas are 2
+nlcdSimple2001[nlcdSimple2001 %in% c(31, 52)] = 3 #Barren land and shrub/scrub are 3
+nlcdSimple2001[nlcdSimple2001 %in% c(41,42,43)] = 4 #All forest types are 4
+nlcdSimple2001[nlcdSimple2001 == 71] = 5 #Grassland is 5
+nlcdSimple2001[nlcdSimple2001 %in% c(81,82)] = 6 #And agriculture is 6
+
+# Give these numbers category names
+tmp = data.frame('ID' = c(1, 2, 3, 4, 5, 6),
+                 'category' = c('wetland', 'developed', 'open', 'forest', 'grassland', 'agriculture'))
+nlcdSimple2001 = categories(nlcdSimple2001, value=tmp)
+
+# And plot the new raster
+ggplot(nlcdSimple2001, aes(x=x, y=y, fill=category)) +
+  geom_raster()+
+  scale_fill_manual(values=c('blue', 'black', 'gray', 'darkolivegreen', 'orange', 'yellow'))
+
+# 2019
+
+nlcd2019 = get_nlcd(studyArea, label='AlLandscape', year=2019)
+
+# Modify categories
+
+nlcdSimple2019 = nlcd2019
+nlcdSimple2019[nlcdSimple2019==11] = 1 #Wet areas are a 1 now
+nlcdSimple2019[nlcdSimple2019 %in% c(21, 22, 23, 24)] = 2 #All developed areas are 2
+nlcdSimple2019[nlcdSimple2019 %in% c(31, 52)] = 3 #Barren land and shrub/scrub are 3
+nlcdSimple2019[nlcdSimple2019 %in% c(41,42,43)] = 4 #All forest types are 4
+nlcdSimple2019[nlcdSimple2019 == 71] = 5 #Grassland is 5
+nlcdSimple2019[nlcdSimple2019 %in% c(81,82)] = 6 #And agriculture is 6
+
+# Give these numbers category names
+tmp = data.frame('ID' = c(1, 2, 3, 4, 5, 6),
+                 'category' = c('wetland', 'developed', 'open', 'forest', 'grassland', 'agriculture'))
+nlcdSimple2019 = categories(nlcdSimple2019, value=tmp)
+
+# And plot the new raster
+ggplot(nlcdSimple2019, aes(x=x, y=y, fill=category)) +
+  geom_raster()+
+  scale_fill_manual(values=c('blue', 'black', 'gray', 'darkolivegreen', 'orange', 'yellow'))
+```
+
+Place your text here.
+
+So, I find this change rather interesting because when I was reading the directions, I assumed there was going to be a large increase in developed area. In fact, there appears to be a minimal change in developed area. The largest change is from forest to agriculture/grassland/open. I suspect that this is actually development and that forest was cleared for running livestock or building houses, but I cannot tell from just the cover types. Another little thing that I found interesting is the open/agriculture area in the northeast corner becoming forest. I suspect that this was an older field or something that underwent succession. Pretty neat to see here.
+
+**Quantify this at the class level by calculating and reporting the changes in (1) the total amount of each land cover type (2) mean patch size for each land cover type, and (3) mean nearest neighbor distance for each cover type between the years 2011 and 2019. Give a short description of how you interpret the changes in these values.**
+
+```{r}
+
+# Calculate some stuff
+
+CA2001 <- lsm_c_ca(nlcdSimple2001, directions=8)
+CA2019 <- lsm_c_ca(nlcdSimple2019, directions=8)
+
+AM2001 <- lsm_c_area_mn(nlcdSimple2001, directions=8)
+AM2019 <- lsm_c_area_mn(nlcdSimple2019, directions=8)
+
+ENN2001 <- lsm_c_enn_mn(nlcdSimple2001, directions=8)
+ENN2019 <- lsm_c_enn_mn(nlcdSimple2019, directions=8)
+
+# Lets put it together and make some plots
+
+changeCats = data.frame(Class = c(1, 2, 3, 4, 5, 6), Category = c('Wetland', 'Developed', 'Open', 'Forest', 'Grassland', 'Agriculture'), TotalArea2001 = CA2001$value , TotalArea2019 = CA2019$value, AreaMean2001 = AM2001$value, AreaMean2019 = AM2019$value, NearestNeighbor2001 = ENN2001$value, NearestNeighbor2019 = ENN2019$value)
+
+# Total area
+
+TAfig <- ggplot(data = changeCats, aes(x = TotalArea2001, y = TotalArea2019)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 1000, 500), lim = c(0, 1000)) +
+  scale_y_continuous(breaks = seq(0, 1000, 500), lim = c(0, 1000)) +
+  xlab("TA (2001)") + 
+  ylab("TA (2019)")
+
+# Mean patch size
+
+MAfig <- ggplot(data = changeCats, aes(x = AreaMean2001, y = AreaMean2019)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 40, 20), lim = c(0, 40)) +
+  scale_y_continuous(breaks = seq(0, 40, 20), lim = c(0, 40)) +
+  xlab("MA (2001)") + 
+  ylab("MA (2019)")
+
+# Nearest Neighbor
+
+NNfig <- ggplot(data = changeCats, aes(x = NearestNeighbor2001, y = NearestNeighbor2019)) + 
+  geom_abline(intercept = 0, color = "gray50", linewidth = 1.2) + 
+  geom_point(aes(color = Category), size = 4, shape = 20) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 400, 200), lim = c(0, 400)) +
+  scale_y_continuous(breaks = seq(0, 400, 200), lim = c(0, 400)) +
+  xlab("ENN (2001)") + 
+  ylab("ENN (2019)")
+
+
+# Lets combine them
+
+Changefig <- ggarrange(TAfig, MAfig, NNfig,  
+                   labels = c("A", "B", "C"),
+                   ncol = 3, nrow = 1, common.legend = TRUE)
+
+Changefig
+```
+
+Place your text here.
+
+The plots above reinforce what I visually observed from plotting the raster. There was less forest and more grassland, open, and agriculture in 2019 than 2001. Mean patch size increased for agriculture, open, and grassland and decreased for forest. Interestingly, ENN decreased for all cover types, though the magnitude of the change differed for each type. This would make sense as the landscape becomes more fragmented and individual patches become separated into multiple patches that are relatively close to each other. 
+
+**Quantify these changes at the landscape level by calculating and reporting on changes in the (1) Shannon diversity and (2) Shannon evenness of the landscapes at the different time points. Give a short description of how you interpret the changes in these values.**
+
+```{r}
+# Diversity
+
+lsm_l_shdi(nlcdSimple2001) # 0.948
+
+lsm_l_shdi(nlcdSimple2019) # 1.341
+
+# Evenness
+
+lsm_l_shei(nlcdSimple2001) # 0.529
+
+lsm_l_shei(nlcdSimple2019) # 0.748
+
+```
+
+Place your text here.
+
+Diversity and evenness increased from 2001 to 2019. I believe that both of these metrics are maximized when all types contain the same number of cells. Therefore, these trends make sense as forest became less dominant (i.e., fragmented) over time and replaced with other cover types. I think that this is an interesting way to look at the landscape because whether or not high diversity/evenness is considered "good" solely relies on what habitats are included and what the natural or goal landscape looks like. For example, if you are calculating these metrics for an area that only has natural land-cover types, you probably want diversity and evenness to be high. Alternatively, like in our case, higher diversity/evenness is related to increased development and forest fragmentation. Of course, forest fragmentation is not always bad (e.g., southern pine savannas), but I feel like it probably is in this situation.
+
+## Challenge 4 (4 points)
+
+**Use the voss2d() function to simulate a surface where g = 7 and H = 0.5. From that, create 9 'landscapes' with 10%, 20%, 30%, ..., 90% threshold values. The '1' values here can represent anything your imagination comes up with. It could be forest cover, cover of some other land cover type, bodies of water, temperatures above a threshold, etc. I suggest you set the seed for your simulation value so that you get the same outcome each time you run the code. Plot these landscapes and comment on what patterns you see changing as the value increases from a 10% cover to 90% cover.**
+
+```{r}
+
+# JV seed
+
+set.seed(23)
+
+# Overall model
+
+vossModel = voss2d(g=7, H=0.5)
+vossModel = rast(vossModel$z)
+
+plot(vossModel)
+
+# Thresholds
+
+# 10% cover
+threshold10 = quantile(as.matrix(vossModel), prob=0.1)
+voss10 = ifel(vossModel > threshold10, 0, 1)
+plot(voss10)
+
+# 20% cover
+threshold20 = quantile(as.matrix(vossModel), prob=0.2)
+voss20 = ifel(vossModel > threshold20, 0, 1)
+plot(voss20)
+
+# 30% cover
+threshold30 = quantile(as.matrix(vossModel), prob=0.3)
+voss30 = ifel(vossModel > threshold30, 0, 1)
+plot(voss30)
+
+# 40% cover
+threshold40 = quantile(as.matrix(vossModel), prob=0.4)
+voss40 = ifel(vossModel > threshold40, 0, 1)
+plot(voss40)
+
+# 50% cover
+threshold50 = quantile(as.matrix(vossModel), prob=0.5)
+voss50 = ifel(vossModel > threshold50, 0, 1)
+plot(voss50)
+
+# 60% cover
+threshold60 = quantile(as.matrix(vossModel), prob=0.6)
+voss60 = ifel(vossModel > threshold60, 0, 1)
+plot(voss60)
+
+# 70% cover
+threshold70 = quantile(as.matrix(vossModel), prob=0.7)
+voss70 = ifel(vossModel > threshold70, 0, 1)
+plot(voss70)
+
+# 80% cover
+threshold80 = quantile(as.matrix(vossModel), prob=0.8)
+voss80 = ifel(vossModel > threshold80, 0, 1)
+plot(voss80)
+
+# 90% cover
+threshold90 = quantile(as.matrix(vossModel), prob=0.9)
+voss90 = ifel(vossModel > threshold90, 0, 1)
+plot(voss90)
+
+```
+
+Place your text here.
+
+These patterns are in relation to the habitat of interest (1): 
+          1. area is  increasing as the threshold is increased,
+          2. ENN should be decreasing as the threshold is increased,
+          3. number of patches may have a quadratic relationship where the greatest number of patches is in the mid-threshold values.
+         
+
+**Identify 3 class-level or landscape-level metrics that help you capture the changes you are observing. Calculate those metrics for each of the 9 landscapes and plot them (x-axis is threshold value and y-axis is calculated metric). Briefly describe why you chose these 3 metrics and how they change with increasing cover.**
+
+```{r}
+
+# Total area
+
+lsm_c_ca(voss10, directions=8) # 0.1665
+lsm_c_ca(voss20, directions=8) # 0.3329
+lsm_c_ca(voss30, directions=8) # 0.4993
+lsm_c_ca(voss40, directions=8) # 0.6657
+lsm_c_ca(voss50, directions=8) # 0.8321
+lsm_c_ca(voss60, directions=8) # 0.9985
+lsm_c_ca(voss70, directions=8) # 1.1649
+lsm_c_ca(voss80, directions=8) # 1.3313
+lsm_c_ca(voss90, directions=8) # 1.4977
+
+# ENN
+
+lsm_c_enn_mn(voss10, directions=8) # 3.1995
+lsm_c_enn_mn(voss20, directions=8) # 3.6378
+lsm_c_enn_mn(voss30, directions=8) # 2.9394
+lsm_c_enn_mn(voss40, directions=8) # 2.5400
+lsm_c_enn_mn(voss50, directions=8) # 2.5356
+lsm_c_enn_mn(voss60, directions=8) # 2.6871
+lsm_c_enn_mn(voss70, directions=8) # 2.6638
+lsm_c_enn_mn(voss80, directions=8) # 2.4132
+lsm_c_enn_mn(voss90, directions=8) # 2.2446
+
+# number of patches
+
+lsm_c_np(voss10, directions=8) # 63
+lsm_c_np(voss20, directions=8) # 71
+lsm_c_np(voss30, directions=8) # 109
+lsm_c_np(voss40, directions=8) # 104
+lsm_c_np(voss50, directions=8) # 56
+lsm_c_np(voss60, directions=8) # 58
+lsm_c_np(voss70, directions=8) # 36
+lsm_c_np(voss80, directions=8) # 47
+lsm_c_np(voss90, directions=8) # 13
+
+# Throw it in a dataframe
+
+vossData <- data.frame(Threshold = c(10, 20, 30, 40, 50, 60, 70, 80, 90), TotalArea = c(0.1665, 0.3329, 0.4993, 0.6657, 0.8321, 0.9985, 1.1649, 1.3313, 1.4977), NearestNeighbor = c(3.1995, 3.6378, 2.9394, 2.5400, 2.5356, 2.6871, 2.6638, 2.4132, 2.446), PatchCount = c(63, 71, 109, 104, 56, 58, 36, 47, 13))
+
+# Lets make some plots
+
+vossTA <- ggplot(data = vossData, aes(x = Threshold, y = TotalArea)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5)), axis.text.x = element_blank()) + 
+  scale_x_continuous(breaks = seq(0, 100, 20), lim = c(0, 100)) +
+  scale_y_continuous(breaks = seq(0, 1.5, 0.75), lim = c(0, 1.6)) +
+  xlab(" ") + 
+  ylab("Total Area")
+
+vossENN <- ggplot(data = vossData, aes(x = Threshold, y = NearestNeighbor)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 20)), axis.title.x = element_text(margin = margin(t = 5)), axis.text.x = element_blank()) + 
+  scale_x_continuous(breaks = seq(0, 100, 20), lim = c(0, 100)) +
+  scale_y_continuous(breaks = seq(2, 4, 1), lim = c(2, 4.2)) +
+  xlab(" ") + 
+  ylab("Nearest Neighbor")
+
+vossNP <- ggplot(data = vossData, aes(x = Threshold, y = PatchCount)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ poly(x,2), geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) +
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 100, 20), lim = c(0, 100)) +
+  scale_y_continuous(breaks = seq(0, 120, 60), lim = c(0, 125)) +
+  xlab("Threshold (%)") + 
+  ylab("Patch Count")
+
+# Lets combine them
+
+vossfig <- ggarrange(vossTA, vossENN, vossNP,  
+                   labels = "",
+                   ncol = 1, nrow = 3)
+
+vossfig
+
+```
+
+Place your text here.
+
+The three metrics that I chose were total area, ENN, and patch count. I chose these metrics as they represent the the abundance, size, and connectivity of habitat patches within the area. These three metrics roughly fit my hypothesized patterns with increasing threshold. Total area increased very consistently as threshold increased. ENN decreased as threshold increased, but it was much more variable than I predicted as the pattern seems to be approximately a 4th order polynomial relationship. I guess that this makes sense as patches of decreasing suitability are probably clumped together. Therefore, as the threshold is increased, a new number of patches will be further away from the original patches, increasing the mean ENN. Then, as threshold is increased further, these patches are "filled in" with lower quality habitat, shortening their distance from the original patches and lowering ENN. This was the most interesting relationship of the three metrics that I calculated. Lastly, patch count behaved as predicted with a peak between 30% and 40% thresholds. I thought that this peak would have been at a slightly higher threshold (40-50%), but it isn't far from the predicted value. There is a little variation in this pattern as before, but the overall pattern fit as predicted.
+
+## Challenge 5 (4 points)
+
+**Use the voss2d() function to simulate 9 surfaces. In each one, g should be 7, but vary the value of H from 0.1 to 0.9. Create a unique landscape from each of these with a threshold value of 30% cover. Again, the 1 values can represent anything you desire, and again I suggest you set the seed for your simulation value so that you get the same outcome each time you run the code. Plot these landscapes and comment on what patterns you see changing as the H value increases from 0.1 to 0.9.**
+
+```{r}
+
+# JV seed
+
+set.seed(23)
+
+# Place your R code here.
+
+# H = 0.1
+
+vossModel1 = voss2d(g=7, H=0.1)
+vossModel1 = rast(vossModel1$z)
+
+threshold1 = quantile(as.matrix(vossModel1), prob=0.3)
+vossMod1 = ifel(vossModel1 > threshold1, 0, 1)
+plot(vossMod1)
+
+# H = 0.2
+
+vossModel2 = voss2d(g=7, H=0.2)
+vossModel2 = rast(vossModel2$z)
+
+threshold2 = quantile(as.matrix(vossModel2), prob=0.3)
+vossMod2 = ifel(vossModel2 > threshold2, 0, 1)
+plot(vossMod2)
+
+# H = 0.3
+
+vossModel3 = voss2d(g=7, H=0.3)
+vossModel3 = rast(vossModel3$z)
+
+threshold3 = quantile(as.matrix(vossModel3), prob=0.3)
+vossMod3 = ifel(vossModel3 > threshold3, 0, 1)
+plot(vossMod3)
+
+# H = 0.4
+
+vossModel4 = voss2d(g=7, H=0.4)
+vossModel4 = rast(vossModel4$z)
+
+threshold4 = quantile(as.matrix(vossModel4), prob=0.3)
+vossMod4 = ifel(vossModel4 > threshold4, 0, 1)
+plot(vossMod4)
+
+# H = 0.5
+
+vossModel5 = voss2d(g=7, H=0.5)
+vossModel5 = rast(vossModel5$z)
+
+threshold5 = quantile(as.matrix(vossModel5), prob=0.3)
+vossMod5 = ifel(vossModel5 > threshold5, 0, 1)
+plot(vossMod5)
+
+# H = 0.6
+
+vossModel6 = voss2d(g=7, H=0.6)
+vossModel6 = rast(vossModel6$z)
+
+threshold6 = quantile(as.matrix(vossModel6), prob=0.3)
+vossMod6 = ifel(vossModel6 > threshold6, 0, 1)
+plot(vossMod6)
+
+# H = 0.7
+
+vossModel7 = voss2d(g=7, H=0.7)
+vossModel7 = rast(vossModel7$z)
+
+threshold7 = quantile(as.matrix(vossModel7), prob=0.3)
+vossMod7 = ifel(vossModel7 > threshold7, 0, 1)
+plot(vossMod7)
+
+# H = 0.8
+
+vossModel8 = voss2d(g=7, H=0.8)
+vossModel8 = rast(vossModel8$z)
+
+threshold8 = quantile(as.matrix(vossModel8), prob=0.3)
+vossMod8 = ifel(vossModel8 > threshold8, 0, 1)
+plot(vossMod8)
+
+# H = 0.9
+
+vossModel9 = voss2d(g=7, H=0.9)
+vossModel9 = rast(vossModel9$z)
+
+threshold9 = quantile(as.matrix(vossModel9), prob=0.3)
+vossMod9 = ifel(vossModel9 > threshold9, 0, 1)
+plot(vossMod9)
+
+```
+
+Place your text here.
+
+So, the biggest pattern that I see is the increasing "clumpiness" of the patch as H increases. This would affect edge habitat, core habitat, and patch density. As H (and "clumpiness") increases, I suspect that edge habitat and patch density decreases, while core habitat increases. 
+
+**Identify 3 class-level or landscape-level metrics that help you capture the changes you are observing. THESE MUST BE DIFFERENT THAN THOSE METRICS YOU USED IN CHALLENGE 2. Calculate those metrics for each of the 9 landscapes and plot them (x-axis is H-value and y-axis is calculated metric). Briefly describe why you chose these 3 metrics and how they change with increasing cover.**
+
+```{r}
+# Place your R code here.
+
+# Clumpiness
+
+lsm_c_clumpy(vossMod1) # 0.5136702
+lsm_c_clumpy(vossMod2) # 0.6535753
+lsm_c_clumpy(vossMod3) # 0.8197488
+lsm_c_clumpy(vossMod4) # 0.7302038
+lsm_c_clumpy(vossMod5) # 0.7660508
+lsm_c_clumpy(vossMod6) # 0.7963830
+lsm_c_clumpy(vossMod7) # 0.9400614
+lsm_c_clumpy(vossMod8) # 0.9442702
+lsm_c_clumpy(vossMod9) # 0.9537036
+
+# Total Edge
+
+lsm_c_te(vossMod1, directions=8) # 6789
+lsm_c_te(vossMod2, directions=8) # 4978
+lsm_c_te(vossMod3, directions=8) # 2542
+lsm_c_te(vossMod4, directions=8) # 3655
+lsm_c_te(vossMod5, directions=8) # 3339
+lsm_c_te(vossMod6, directions=8) # 2833
+lsm_c_te(vossMod7, directions=8) # 990
+lsm_c_te(vossMod8, directions=8) # 931
+lsm_c_te(vossMod9, directions=8) # 741
+
+# Patch Density
+
+lsm_c_pd(vossMod1, directions=8) # 15984.616
+lsm_c_pd(vossMod2, directions=8) # 10035.455
+lsm_c_pd(vossMod3, directions=8) # 5228.051
+lsm_c_pd(vossMod4, directions=8) # 7271.198
+lsm_c_pd(vossMod5, directions=8) # 5708.792
+lsm_c_pd(vossMod6, directions=8) # 4326.663
+lsm_c_pd(vossMod7, directions=8) # 1322.0359
+lsm_c_pd(vossMod8, directions=8) # 961.4807
+lsm_c_pd(vossMod9, directions=8) # 420.6478
+
+# Throw it in a dataframe
+
+hvossData <- data.frame(H = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9), Clumpiness = c(0.5136702, 0.6535753, 0.8197488, 0.7302038, 0.7660508, 0.7963830, 0.9400614, 0.9442702, 0.9537036), TotalEdge = c(6789, 4978, 2542, 3655, 3339, 2833, 990, 931, 741), PatchDensity = c(15984.616, 10035.455, 5228.051, 7271.198, 5708.792, 4326.663, 1322.0359, 961.4807, 420.6478))
+
+# Lets make some plots
+
+vossCL <- ggplot(data = hvossData, aes(x = H, y = Clumpiness)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 22)), axis.title.x = element_text(margin = margin(t = 5)), axis.text.x = element_blank()) + 
+  scale_x_continuous(breaks = seq(0, 1, .2), lim = c(0, 1)) +
+  scale_y_continuous(breaks = seq(0.4, 1, 0.3), lim = c(0.4, 1.05)) +
+  xlab(" ") + 
+  ylab("Clumpiness")
+
+vossTE <- ggplot(data = hvossData, aes(x = H, y = TotalEdge)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) + 
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 15)), axis.title.x = element_text(margin = margin(t = 5)), axis.text.x = element_blank()) + 
+  scale_x_continuous(breaks = seq(0, 1, .2), lim = c(0, 1)) +
+  scale_y_continuous(breaks = seq(0, 7000, 3500), lim = c(0, 7100)) +
+  xlab(" ") + 
+  ylab("Total Edge")
+
+vossND <- ggplot(data = hvossData, aes(x = H, y = PatchDensity)) + 
+  geom_point(size = 3.5, shape = 20) + 
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", colour = "black", size = 1.2, span = 999999, se = F) +
+  theme_scatter() +
+  theme(axis.title.y = element_text(margin = margin(r = 10)), axis.title.x = element_text(margin = margin(t = 5))) + 
+  scale_x_continuous(breaks = seq(0, 1, .2), lim = c(0, 1)) +
+  scale_y_continuous(breaks = seq(0, 16000, 8000), lim = c(0, 16200)) +
+  xlab("H") + 
+  ylab("Patch Density")
+
+# Lets combine them
+
+hvossfig <- ggarrange(vossCL, vossTE, vossND,  
+                   labels = "",
+                   ncol = 1, nrow = 3)
+
+hvossfig
+
+```
+
+Place your text here.
+
+
+The three metrics that I chose were clumpiness, total edge, and patch density. I chose these metrics because they were the most visually different between the nine models. Furthermore, these three metrics could tell you quite a lot about the fragmentation of the landscape as fragmentation would lead to increases in total edge and patch density and a decrease in "clumpiness". While all three of these three metrics roughly fit my hypothesized patterns with increasing H, there was noticeable variability in their patterns. I suspect that this is due to chance as these landscapes are "random". If you were to run a few thousand iterations with different landscapes, I suspect that the "clumpiness" pattern would become a lot smoother and resemble more of a linear relationship. The possible exceptions to a true linear relationship may be total edge and patch density. These metric seem to exhibit a exponential decay type pattern with increase H. I believe that this pattern may be more probable than a linear relationship because as "clumpiness" increases,  isolated cells are initially much more likely to come in contact with another isolated cell of the same type and this probability should decrease as H increases as the majority of cells are already touching at least one other cell. Essentially, creating fewer, larger patches. This probability would result in a case of "diminishing returns" for total edge and patch density.
+
