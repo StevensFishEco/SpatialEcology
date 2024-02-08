@@ -1,0 +1,206 @@
+---
+title: "Lab 5 assignment - Point pattern analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, warning=F, error=F, message=F}
+
+# Packages
+
+rm(list=ls())
+
+require(spatstat)
+require(tidyverse)
+require(terra)
+require(rrapply)
+
+```
+
+
+# Challenge 1 (3 points)
+
+Create a simulation window on a landscape stretching from 0 to 100 units in both the x and y directions. Now simulate the distribution of an organism on this landscape using a Poisson process with a lambda value of 0.01. Plot this organism's distribution. How many organisms are there on your landscape? What is the expected number of organisms that you should find on this landscape based on your simulation parameters? Why?
+
+```{r}
+# JNS seed
+
+set.seed(73)
+
+# Simulate some things
+
+simWin <- owin(xrange=c(0,100), yrange=c(0,100))
+
+simDist <- rpoispp(lambda = 0.01, lmax = NULL,  win = simWin, nsim = 1, drop = TRUE)
+
+simppp = ppp(x=simDist$x, y=simDist$y, window = simWin)
+
+plot(simppp)
+plot(density(x = simppp, sigma = 5))
+
+# Playing around to make sure that I understand rpoispp
+
+# 5 sims
+
+set.seed(73)
+simDist5 <- rpoispp(lambda = 0.01, lmax = NULL,  win = simWin, nsim = 5, drop = TRUE)
+sd5 <- rrapply(simDist5, how = "bind") 
+mean(sd5$n)
+
+# 10 sims
+
+set.seed(73)
+simDist10 <- rpoispp(lambda = 0.01, lmax = NULL,  win = simWin, nsim = 10, drop = TRUE)
+sd10 <- rrapply(simDist10, how = "bind") 
+mean(sd10$n)
+
+# 100 sims
+
+set.seed(73)
+simDist100 <- rpoispp(lambda = 0.01, lmax = NULL,  win = simWin, nsim = 100, drop = TRUE)
+sd100 <- rrapply(simDist100, how = "bind") 
+mean(sd100$n)
+
+```
+
+Place your answer to Challenge 1 here.
+
+There are 98 organisms in my simulated landscape. I would have expected to have 100 organisms as there are 10,000 "units" in my landscape and at lambda = 0.01, each of those units have a 1% chance of containing an organism. However, since this is a single simulation, there is a chance that the actual number of organisms will not be 100 (as is the case here) because of random chance. Above, I played around with different numbers of simulations and the number of organisms gets progressively closer to 100 with increased numbers of simulations. 
+
+# Challenge 2 (3 points)
+
+Verify that there no linear or quadratic pattern in the distribution of your organisms using fitted Poisson process models. Show the outcome of this analysis and explain your conclusion.
+
+```{r}
+# Models
+
+ppInt = ppm(simppp, ~1)
+ppXy = ppm(simppp, ~ x + y)
+ppX2y = ppm(simppp, ~ poly(x,2) + y)
+ppXy2 = ppm(simppp, ~ x + poly(y,2))
+ppX2y2 = ppm(simppp, ~polynom (x, y, 2))
+
+# AIC 
+
+data.frame(model = c('int', 'xy', 'x2y', 'xy2', 'x2y2'),
+           AIC = c(AIC(ppInt), AIC(ppXy), AIC(ppX2y), AIC(ppXy2), AIC(ppX2y2)))
+
+# Plots in AIC order
+
+plot(predict(ppInt, type='trend'))
+plot(simppp, add=T)
+
+plot(predict(ppX2y, type='trend'))
+plot(simppp, add=T)
+
+plot(predict(ppXy, type='trend'))
+plot(simppp, add=T)
+
+plot(predict(ppX2y2, type='trend'))
+plot(simppp, add=T)
+
+plot(predict(ppXy2, type='trend'))
+plot(simppp, add=T)
+
+
+```
+
+Place your answer to Challenge 2 here.
+
+So, when I initially ran these models, AIC selected the quadratic model. However, I noticed that clusters in the upper and lower right corners were driving this pattern. I then created two additional models that allowed for only x or y to be quadratic. After adding these two additional models, AIC selected the model with a linear pattern on x and a quadratic pattern on y. Visually, this makes sense with the prediction plots. I think this sort of relationship could be possible if there was a "wedge" of lower quality habitat bisecting a patch of higher quality habitat. This would cause greater numbers of individuals to inhabit the higher quality habitat up to a certain number, then due to resource limitations or competition or some other threshold repulsion factor, some individuals would have to inhabit the lower quality habitat.
+
+# Challenge 3 (14 points)
+
+I have simulated the distributions of 2 critters and provided their x-y coordinates. One of them is a non-territorial predator. The second is a critter that is preyed upon by the predator and exhibits a fear response to the predator's presence. Use the tools you learned in the lab to explore the distributions of these two critters. Identify which one is the predator and which is the prey, and provide code and a thorough justification supporting your conclusion.
+
+
+```{r}
+# Supplied data
+
+predPreyWin = owin(xrange = c(0, 100), yrange = c(0, 100))
+
+critter1 = read.csv('https://raw.githubusercontent.com/ValenteJJ/SpatialEcology/main/Week5/species1.csv') %>% 
+  mutate(org = 'critter1')
+
+critter2 = read.csv('https://raw.githubusercontent.com/ValenteJJ/SpatialEcology/main/Week5/species2.csv') %>% 
+  mutate(org = 'critter2')
+
+# Lets make the point patterns and plot them
+
+pppC1 = ppp(x=critter1$x, y=critter1$y, window = predPreyWin)
+
+plot(pppC1)
+plot(density(pppC1, 2))
+
+pppC2 = ppp(x=critter2$x, y=critter2$y, window = predPreyWin)
+
+plot(pppC2)
+plot(density(pppC2, 2))
+```
+
+Okay, based on the information given about the two critters, I can assume that the predator should display a more "random" distribution than the prey. I cannot tell who is who just yet, but visually, it certainly looks like one of them is more "bunched up" than the other... lets try some basic quadrat tests.
+
+```{r}
+
+# Critter 1 quadrat
+q1 = quadratcount(pppC1, nx=4, ny=4)
+plot(pppC1)
+plot(q1, add=T)
+quadrat.test(pppC1, nx=4, ny=4, method='Chisq')
+
+# Critter 2 quadrat
+
+q2 = quadratcount(pppC2, nx=4, ny=4)
+plot(pppC2)
+plot(q2, add=T)
+quadrat.test(pppC2, nx=4, ny=4, method='Chisq')
+```
+
+Hmm... one of the two critters confirms to CSR and the other does not. That definitely seems like a clue. Lets look at L values for each.
+
+
+```{r}
+
+# Critter 1
+lCsr1 = envelope(pppC1, Lest, nsim=99, rank=1, correction = "best", global=F)
+plot(lCsr1, .-r~r, shade=c('hi', 'lo'), legend=F)
+
+# Critter 2
+
+lCsr2 = envelope(pppC2, Lest, nsim=99, rank=1, correction= "best", global=F)
+plot(lCsr2, .-r~r, shade=c('hi', 'lo'), legend=F)
+
+```
+
+Once again, one of the critters is way outside of the upper and lower envelope. The evidence is pretty compelling so far, but lets try and look at L values accounting for the distribution of the other and itself...
+
+
+```{r}
+
+# Combine them
+
+tmp = data.frame(x = c(critter1$x, critter2$x), y = c(critter1$y, critter2$y), org = c(critter1$org, critter2$org))
+
+# Make, split, and plot point pattern
+
+pppPa = ppp(tmp$x, tmp$y, window = predPreyWin, marks = as.factor(tmp$org))
+
+split(pppPa)
+
+plot(split(pppPa))
+
+# Lcross
+
+lcrossC12 = envelope(pppPa, Lcross, nsim=99, rank=1, i = "critter1", j = "critter2", global=F, simulate = expression(rlabel(pppPa)))
+plot(lcrossC12, .-r~r, legend=F) # Less than expected by envelope
+
+lcrossC11 = envelope(pppPa, Lcross, nsim=99, rank=1, i = "critter1", j = "critter1", global=F, simulate = expression(rlabel(pppPa)))
+plot(lcrossC11, .-r~r, legend=F) # More then expected by envelope
+
+lcrossC22 = envelope(pppPa, Lcross, nsim=99, rank=1, i = "critter2", j = "critter2", global=F, simulate = expression(rlabel(pppPa)))
+plot(lcrossC22, .-r~r, legend=F) # Within envelope
+```
+
+Okay, now I am confident enough to declare who is who. Critter 1 is the prey. Critter 2 is the predator. This identification is supported by results from visual inspection of the distributions, quadrat tests, Ripley's L, and cross-type L. As stated above, I assume that the predator should display a more "random" distribution than the prey because the prey species is actively avoiding the predator. Visual inspection suggested that Critter 1 was more "clumped" than Critter 2. Quadrat tests confirmed that Critter 1 did not confirm to CSR, while Critter 2 did. Ripley's L further confirmed that Critter 1 was "clumped" compared to the random distribution, while Critter 2 was not. Finally, Critter 1's "clumpiness" was removed after accounting for the distribution of Critter 2 (i.e., Lcross). 
+
