@@ -111,7 +111,7 @@ patchMetrics8 <- data.frame(ID = patchArea8$id, Area = patchArea8$value, Gyrate 
 
 # Correlation matrix
 
-PerformanceAnalytics::chart.Correlation(patchMetrics8, histogram=F)
+PerformanceAnalytics::chart.Correlation(patchMetrics8 %>% select(-ID), histogram=F)
 
 # My own little exploration into the multicolinearity. I am just going to remove the variable with the highest VIF until all remaining terms have VIF < 10 (standard cut-off)
 
@@ -136,6 +136,7 @@ Answer Challenge 1 with your written text here.
 
 So there is obviously a lot of colinearity among these metrics and they seem pretty redundant. However, much of this colinearity can be attributed to metrics that quantify a similar process/pattern (i.e., metric type). This is to be expected because, while different metrics may highlight various aspects of a process/pattern, the values from site to site should change similarly among the metrics regardless of what exactly they are highlighting. For example, you could calculate average monthly temperatures across multiple sites. While these values highlight different aspects of climate, patterns across sites are likely to remain consistent (e.g., the hottest sites in June will probably be the hottest sites in July). The high correlation between metrics of different types is also interesting as many of these would be considered highly correlated (>0.6). Since all of the metrics are working off of the same base data, I guess this correlation is not all that surprising. Interestingly, removing just five of the 12 variables lowered VIFs below accepted thresholds. If some of these removed variables are of special interest (e.g., AREA or PERIM), perhaps you could isolate the least "interesting" variables for a specific project and see a similar decline in VIF.
 
+$\color{red}{\text{Cool exploration with the VIF. +4}}$
 
 ## Challenge 2 (4 points)
 
@@ -258,6 +259,8 @@ Classfig
 Answer Challenge 2 with your written text here.
 
 So, again, there is a lot of colinearity among these metrics. Colinearity exists not only between the same metrics with different cases (e.g., queen and rook), but among different metrics following both cases This makes sense for the same reasons as with the patch-level metrics. Additionally, the value of each metric can vary quite a bit depending on which case you use to calculate it. Broadly, the queen case results in fewer number of patches, larger patch size, higher variance in patch size, and greater distances between patches of the same type. This makes sense as both cases have the same data, so fewer patches would have to result in those patches being larger. Fewer, larger patches are always going to lead to higher variance in patch size (assuming that the underlying data do not change). Fewer patches are also going to lead to larger distances between those patches, especially considering that the patched "split" by changing to from queen to rook are very close to the "patch" that it was just split from. Interestingly, total edge remained the same for both cases. I read the vignette on landscapemetrics and it seems like they calculate edge based on any cell edge that is not directly adjoining a cell of the same type. Therefore, I do not know if that function actually has the ability to separate edge based on the "queen case" since the literal side of the cell is not actually "touching" the adjoining corner cell. This makes sense with the results above, but I may have calculated it wrong. When deciding to use one case or the other, I think it just depends on your study animal, system, and what behavior or characteristic you are interested in. For example, if your study animal is highly mobile, it might make sense to use the queen case. The queen case would also be applicable if the majority of your background matrix can easily be traveled through (agriculture versus heavy development). However, if you are interested in a species that is not very mobile or the matrix is inhospitable, then the rook case is probably more applicable.
+
+$\color{red}{\text{Total edge should definitely stay the same. And nice plots! +4}}$
 
 ## Challenge 3 (4 points)
 
@@ -407,6 +410,8 @@ lsm_l_shei(nlcdSimple2019) # 0.748
 Place your text here.
 
 Diversity and evenness increased from 2001 to 2019. I believe that both of these metrics are maximized when all types contain the same number of cells. Therefore, these trends make sense as forest became less dominant (i.e., fragmented) over time and replaced with other cover types. I think that this is an interesting way to look at the landscape because whether or not high diversity/evenness is considered "good" solely relies on what habitats are included and what the natural or goal landscape looks like. For example, if you are calculating these metrics for an area that only has natural land-cover types, you probably want diversity and evenness to be high. Alternatively, like in our case, higher diversity/evenness is related to increased development and forest fragmentation. Of course, forest fragmentation is not always bad (e.g., southern pine savannas), but I feel like it probably is in this situation.
+
+$\color{red}{\text{Superb. +4}}$
 
 ## Challenge 4 (4 points)
 
@@ -571,6 +576,8 @@ vossfig
 Place your text here.
 
 The three metrics that I chose were total area, ENN, and patch count. I chose these metrics as they represent the the abundance, size, and connectivity of habitat patches within the area. These three metrics roughly fit my hypothesized patterns with increasing threshold. Total area increased very consistently as threshold increased. ENN decreased as threshold increased, but it was much more variable than I predicted as the pattern seems to be approximately a 4th order polynomial relationship. I guess that this makes sense as patches of decreasing suitability are probably clumped together. Therefore, as the threshold is increased, a new number of patches will be further away from the original patches, increasing the mean ENN. Then, as threshold is increased further, these patches are "filled in" with lower quality habitat, shortening their distance from the original patches and lowering ENN. This was the most interesting relationship of the three metrics that I calculated. Lastly, patch count behaved as predicted with a peak between 30% and 40% thresholds. I thought that this peak would have been at a slightly higher threshold (40-50%), but it isn't far from the predicted value. There is a little variation in this pattern as before, but the overall pattern fit as predicted.
+
+$\color{red}{\text{Nailed it. +4}}$
 
 ## Challenge 5 (4 points)
 
@@ -763,3 +770,4 @@ Place your text here.
 
 The three metrics that I chose were clumpiness, total edge, and patch density. I chose these metrics because they were the most visually different between the nine models. Furthermore, these three metrics could tell you quite a lot about the fragmentation of the landscape as fragmentation would lead to increases in total edge and patch density and a decrease in "clumpiness". While all three of these three metrics roughly fit my hypothesized patterns with increasing H, there was noticeable variability in their patterns. I suspect that this is due to chance as these landscapes are "random". If you were to run a few thousand iterations with different landscapes, I suspect that the "clumpiness" pattern would become a lot smoother and resemble more of a linear relationship. The possible exceptions to a true linear relationship may be total edge and patch density. These metric seem to exhibit a exponential decay type pattern with increase H. I believe that this pattern may be more probable than a linear relationship because as "clumpiness" increases,  isolated cells are initially much more likely to come in contact with another isolated cell of the same type and this probability should decrease as H increases as the majority of cells are already touching at least one other cell. Essentially, creating fewer, larger patches. This probability would result in a case of "diminishing returns" for total edge and patch density.
 
+$\color{red}{\text{Great work on this, Jeff. +4}}$
