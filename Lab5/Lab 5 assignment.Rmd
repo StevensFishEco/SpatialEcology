@@ -68,6 +68,9 @@ Place your answer to Challenge 1 here.
 
 There are 98 organisms in my simulated landscape. I would have expected to have 100 organisms as there are 10,000 "units" in my landscape and at lambda = 0.01, each of those units have a 1% chance of containing an organism. However, since this is a single simulation, there is a chance that the actual number of organisms will not be 100 (as is the case here) because of random chance. Above, I played around with different numbers of simulations and the number of organisms gets progressively closer to 100 with increased numbers of simulations. 
 
+$\color{red}{\text{Perfect. +3}}$
+
+
 # Challenge 2 (3 points)
 
 Verify that there no linear or quadratic pattern in the distribution of your organisms using fitted Poisson process models. Show the outcome of this analysis and explain your conclusion.
@@ -109,6 +112,9 @@ plot(simppp, add=T)
 Place your answer to Challenge 2 here.
 
 So, when I initially ran these models, AIC selected the quadratic model. However, I noticed that clusters in the upper and lower right corners were driving this pattern. I then created two additional models that allowed for only x or y to be quadratic. After adding these two additional models, AIC selected the model with a linear pattern on x and a quadratic pattern on y. Visually, this makes sense with the prediction plots. I think this sort of relationship could be possible if there was a "wedge" of lower quality habitat bisecting a patch of higher quality habitat. This would cause greater numbers of individuals to inhabit the higher quality habitat up to a certain number, then due to resource limitations or competition or some other threshold repulsion factor, some individuals would have to inhabit the lower quality habitat.
+
+$\color{red}{\text{You stumbled on a wonky situation where you accidentally simulated a distribution with some spatial patterning in it. That wasn't supposed to happen, but nice work running with the cards you were dealt. +3}}$
+
 
 # Challenge 3 (14 points)
 
@@ -203,4 +209,6 @@ plot(lcrossC22, .-r~r, legend=F) # Within envelope
 ```
 
 Okay, now I am confident enough to declare who is who. Critter 1 is the prey. Critter 2 is the predator. This identification is supported by results from visual inspection of the distributions, quadrat tests, Ripley's L, and cross-type L. As stated above, I assume that the predator should display a more "random" distribution than the prey because the prey species is actively avoiding the predator. Visual inspection suggested that Critter 1 was more "clumped" than Critter 2. Quadrat tests confirmed that Critter 1 did not confirm to CSR, while Critter 2 did. Ripley's L further confirmed that Critter 1 was "clumped" compared to the random distribution, while Critter 2 was not. Finally, Critter 1's "clumpiness" was removed after accounting for the distribution of Critter 2 (i.e., Lcross). 
+
+$\color{red}{\text{Nice work, Jeff. +14}}$
 
