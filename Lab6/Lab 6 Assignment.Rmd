@@ -44,6 +44,9 @@ Answer the question here.
 
 I think that there does appear to be some weak spatial dependence in the abundance data (at least, it is weak compared to the example in the lab). I think that there is spatial dependence in the abundance data because there appears to be more mid-abundance values by each other than there would be in a truly random distribution. It appears to be weak, however, because the extreme values are isolated and the values are not grouped as obviously as the example in lab.
 
+$\color{red}{\text{Nice. +2}}$
+
+
 # Challenge 2 (3 points)
 
 Empirically test for evidence of spatial dependence in bee abundance by first building a corelogram, then building a semi-variogram. Be sure to provide an envelope for assessing whether the values in each figure are statistically different from what would be expected if the bee values were randomly distributed. Describe the patterns you see, and your interpretation with regards to the spatial dependence in mean bee abundance. Be sure to identify the maximum distance at which you should interpret your figures (2/3 of the maximum distance between points).
@@ -93,6 +96,9 @@ plot(empGeor)
 Answer the question here.
 
 The correlogram suggests that mean bee abundance does display spatial dependence up until approximately 20m between sampling points (traps). At that distance onward (from ~ 20m until 2/3 max distance ~ 89m), the effect size of any statistical correlation would be so low that there is likely no biological significance. The semi-variogram roughly supports this distance as the semivariance starts to "level out". Interesting, there is another rise in semivariance that corresponds to the second "dip" in the correlogram. I am dismissing this pattern as the correlogram shows us that the probablity of a biological significance in this second "dip"/ increase in semivariance is low.
+
+$\color{red}{\text{Good, but you forgot your confidence envelope around your variogram. +2.5}}$
+
 
 # Challenge 3 (4 points)
 
@@ -150,6 +156,9 @@ Answer the question here.
 
 The model B0 is the same as the average of the values, which is to be expected. The correlograms and semi-variograms for the raw data and the residuals are also the same. Furthermore, if you look at the values in correlogNcf and correlogNcf2, they are also the same. I think that this makes sense because using the residuals from an intercept only model should essentially act like a data transformation. Essentially, all that we have done is made the new mean zero. We have not affected the actual variance of the data at all. Either that or I did this wrong, which is entirely possible.
 
+$\color{red}{\text{Nope, you did it right. Awesome! But you still forgot your confidence envelopes. +3.5}}$
+
+
 # Challenge 4 (4 points)
 
 Conventional wisdom indicates that the distribution of floral resources may substantially influence bee abundance. In addition, I am completely making up the following fact: the average bee has a perceptual range of about 15 m. Below I have provided code for importing a raster that shows the number of flowers counted in 1 m grid cells across the entire study area. Use the focal() function from the previous lab to generate a new raster in which each cell value represents the mean number of flowers in cells within a 15 m radius. Plot the distribution of the blue vane traps over the 15 m focal raster. No text required here, just show me the plot.
@@ -179,7 +188,10 @@ points(blueVanes)
 
 ```
 
-No text required
+$\color{red}{\text{Good. +4}}$
+
+
+
 
 # Challenge 5 (4 points)
 
@@ -239,6 +251,9 @@ Answer the question here.
 
 So, now the data does not appear to display spatial dependence via both the correlogram and semi-variogram. In the correlogram, we no longer see high correlation at any distance (and the axis scale has shrunk considerably). In the semi-variogram, the semi-variance is pretty standard across the entire plot, indicating that distance has no impact on residual variance. I think that this makes sense as we have measured the underlying covariate that accounted for the spatial dependence. Much like elevation from our in-class example, accounting for this previously "unknown" covariate has removed any spatial dependency in our data.
 
+$\color{red}{\text{Awesome! But confidence envelopes... +3.5}}$
+
+
 # Challenge 6 (3 points)
 
 What is your assessment regarding the distribution of bee abundance in this study area? Does it exhibit spatial dependence, and if so, what is driving that pattern?
@@ -246,3 +261,6 @@ What is your assessment regarding the distribution of bee abundance in this stud
 Answer the question here.
 
 I kind of referenced this above, but no, I do not think that bee abundance actually exhibits spatial dependence in this area. Going from our discussion yesterday, if any spatial dependence in the raw data can be explained by a covariate, then it isn't truly spatial dependence in the response variable. It is simply an artifact of the patchy distribution of a prevalent covariate. Thus, our model including the covariate floral distribution eliminated the spatial dependence of the response variable, mean bee abundance. So, while the raw data implies that there is some degree of spatial dependance, I believe that the change in residuals after adding the covariate of floral distribution supports a lack of true spatial dependence in bee adundance and that the spatial dependence observed in the raw data is an artifact of the patchiness of the covariate. I do think that this could be a "slippery slope" in extreme circumstances such as data mining/dredging, but if there is a legitimate biological justification (as there is in bee abundance and floral distribution), then this concern is null. 
+
+$\color{red}{\text{Good. Though I wouldn't exactly say that there is no real dependence in bee abundance. There is, but it's driven by spatial aggregation of floral resources. +3}}$
+
