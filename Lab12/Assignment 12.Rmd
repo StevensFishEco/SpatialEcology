@@ -1,0 +1,467 @@
+---
+title: "Assignment 12 - Connectivity"
+output: html_notebook
+---
+
+
+```{r, warning=F, message=F}
+
+rm(list=ls())
+
+require(tidyverse)
+require(terra)
+require(sf)
+require(gdistance)
+require(igraph)
+require(fitdistrplus)
+require(fdrtool)
+```
+
+
+# Challenge 1 (5 points)
+
+In the lab, we calculated Euclidean distance, least-cost distance, commute distance (based on circuit theory), and a randomized shortest path distance. Examine the correlation among these 4 metrics of effective distance. Which tend to be the longest, which tend to be the shortest, and why? In what situations might you expect to find strong differences between Euclidean distance and the other metrics of effective distance?
+
+```{r}
+# Code from lab
+
+# Read in the landcover raster
+land = rast('https://github.com/ValenteJJ/SpatialEcology/raw/main/Week10/panther_landcover.tif')
+
+# Identify the crs of the landcover raster
+crs(land)
+
+# Look at the raster's resolution
+res(land)
+
+# Bring in the public lands shapefile
+public = st_read('/vsicurl/https://github.com/ValenteJJ/SpatialEcology/raw/main/Week12/panther_publicland.shp')
+
+# Set the crs of the public lands shapefile
+st_crs(public) = crs(land)
+
+# And look at it
+data.frame(public)
+
+# Calculate the centroid
+publicCentroids = st_centroid(public)
+
+plot(land)
+plot(st_geometry(public), add=T)
+plot(st_geometry(publicCentroids), add=T, col='red')
+
+# Reclassify categories
+
+classification = read.table('https://raw.githubusercontent.com/ValenteJJ/SpatialEcology/main/Week12/resistance%20reclass.txt', header=T)
+landCost = classify(land, classification[,c(1,3)])
+landCost = raster(landCost)
+
+plot(landCost)
+plot(st_geometry(public), add=T)
+plot(st_geometry(publicCentroids), add=T, col='red')
+
+### I am looking at the distance from patch 1 to patch 2 for each metric
+
+# Euclidean distance (127755.36)
+
+geoDist = pointDistance(publicCentroids, lonlat=F)
+geoDist = as.dist(geoDist)
+geoDist
+
+# Calculate conductance transition matrix
+landCond = transition(1/landCost, transitionFunction = mean, 8)
+
+# Do a geographic correction of the conductance values to "correct" for the fact that there are further distances between cells that touch on the diagonal
+landCond = geoCorrection(landCond, type='c', multpl=F)
+
+# Least-cost distance (250607.85)
+lcDist = costDistance(landCond, st_coordinates(publicCentroids))
+lcDist
+
+# Commute distance (1337632.6)
+circuitDist = commuteDistance(landCond, st_coordinates(publicCentroids))
+circuitDist
+
+# Randomized shortest path distance (310205.9)
+rspDist1.2 = rSPDistance(landCond, from=st_coordinates(publicCentroids)[1,], to=st_coordinates(publicCentroids)[2,], theta=0.001)
+rspDist1.2
+
+```
+
+Q. Which tend to be the longest, which tend to be the shortest, and why? In what situations might you expect to find strong differences between Euclidean distance and the other metrics of effective distance?
+
+I am just looking at the distance between patch 1 and patch 2 for this comparison as the code was already written from lab.
+
+Distance between Patch 1 and Patch 2 (increasing order):
+
+Euclidean distance (127755.36)
+Least-cost distance (250607.85)
+Randomized shortest path distance (310205.9)
+Commute distance (1337632.6)
+
+So from this single patch-to-patch distance, the Euclidean distance was by far the shortest and the commute distance was by far the longest. I think that this makes sense as the Euclidean distance is essentially a straight line and circuit theory follows a path of least resistance, so theoretically, that path could snake around many high resistance cells to find a more conducive path overall. I think that the strongest difference between Euclidean distance and the other metrics will be found when there is a very long strip of highly resistant cells running perpendicular to the Euclidean path (i.e., bisecting it) and the other paths choose to go completely round that long strip. Obviously, that strip would have to be many, many times more resistant than the surrounding cells in order for the other methods to choose to go around it, but depending on the classification, I believe that is possible. Also, a highly fragmented landscape with many highly resistant cells would lead to a large difference between Euclidean distance and the other methods.
+
+
+# Challenge 2 (5 points)
+
+In the lab we developed a 10% least-cost corridor between two protected areas. Identify what proportion of this corridor is comprised of each landcover type based on the land raster. To do this, make sure that both the land and leastCostCorridor10 rasters are spatRasters. Then mask land with leastCostCorridor10. The values in the resulting raster will be representative of the landcover values in the corridor. Summarise this information and refer back to the classification dataframe to link the landcover numbers with landcover types. What are the three most common landcover types within this corridor, and does this make sense given what you know about the resistance to movement within such landcover types?
+
+```{r}
+# Code from lab
+
+# Choose the extent for cropping
+fpwrOssfExtent = extent(642000, 683000, 237000, 298000)
+
+# Crop the landcover layer
+landSub = crop(land, fpwrOssfExtent)
+
+# Crop the cost layer and create a transition matrix
+landCostSub = crop(landCost, fpwrOssfExtent)
+landCondSub = transition(1/landCostSub, transitionFunction=mean, 8)
+landCondSub = geoCorrection(landCondSub, type='c', multpl=F)
+
+fpwrOssfLcp = shortestPath(landCond, st_coordinates(publicCentroids)[5,], st_coordinates(publicCentroids[3,]), output='SpatialLines')
+
+plot(landCostSub, axes=F)
+plot(st_geometry(public), add=T)
+plot(st_geometry(publicCentroids), col='grey30', add=T)
+lines(fpwrOssfLcp, col='red', lwd=3)
+
+fpwrCost = accCost(landCondSub, st_coordinates(publicCentroids)[5,])
+ossfCost = accCost(landCondSub, st_coordinates(publicCentroids)[3,])
+
+plot(fpwrCost)
+plot(ossfCost)
+
+leastCostCorridor = overlay(fpwrCost, ossfCost, fun=function(x, y){return(x+y)})
+
+plot(leastCostCorridor)
+
+# Calculate the 10% quantile for the leastCostCorridor raster
+quantile10 = quantile(leastCostCorridor, probs=0.1, na.rm=T)
+quantile10
+
+# Create a new raster with a value of 1 if it has a summed cost in the lower 10% and a NA otherwise
+leastCostCorridor10 = leastCostCorridor
+values(leastCostCorridor10) = NA
+leastCostCorridor10[leastCostCorridor < quantile10] = 1
+
+# Plot this raster and look at it
+plot(leastCostCorridor10, legend=F, axes=F)
+points(publicCentroids, col='grey30')
+lines(fpwrOssfLcp, col='red')
+
+# Make leastCostCorridor10 a spat raster
+
+LCC10 <- rast(leastCostCorridor10)
+
+plot(LCC10)
+
+# Crop then Mask (just to make sure it looks the same throughout the two steps)
+
+landClass = classify(land, classification[,c(1,3)])
+
+LCC10LCT <- crop(landClass, LCC10)
+
+plot(LCC10LCT)
+
+crs(LCC10LCT) = crs(LCC10)
+
+LCC10LCT2 <- mask(LCC10LCT, LCC10)
+
+plot(LCC10LCT2)
+
+# Summarize
+
+LCCDF <- as.data.frame(LCC10LCT2)
+
+count(LCCDF, gfchab_500cl2)
+
+
+
+```
+
+Q. What are the three most common landcover types within this corridor, and does this make sense given what you know about the resistance to movement within such landcover types?
+
+The three most common landcover types within the corridor are  Scrub/CypressSwamp (n = 231), Hardwood/HardwoodSwamp (n = 226), and  FreshwaterMarsh (n = 177). All three types are in the top half of resistance (or bottom half, depending on how you look at it), so it does make sense that those are in the best corridor. But what I really think is cool is that those three types would naturally be adjacent to each other in a lowland, swampy environment like southern Florida. So, you can see how a natural landscape feature (e.g., a large lowland swamp) has created a good movement corridor (swamps are also hard to drain and change into human-friendly landcover types, so this corridor may remain intact for a while).
+
+
+# Challenge 3 (5 points)
+
+In the lab, we used the passage() function to conduct a randomized shortest path analysis mapping connectivity among two protected areas. We initially set theta to 0 thus resulting in a circuit theory based map of connectivity. Using the same passage() function, conduct the analysis again using values of theta = 0.0001 and theta = 0.001. Plot the resulting maps. What patterns do you see emerge as theta increases? Comment on the tradeoffs between biological realism and ease of conservation planning based on these three different maps of connectivity.
+
+```{r}
+
+# theta = 0
+
+passageMapT0 = passage(landCondSub, origin = st_coordinates(publicCentroids)[3,], goal = st_coordinates(publicCentroids)[5,], theta=0)
+
+plot(passageMapT0)
+
+# theta = 0.0001
+
+passageMapT0 = passage(landCondSub, origin = st_coordinates(publicCentroids)[3,], goal = st_coordinates(publicCentroids)[5,], theta=0.0001)
+
+plot(passageMapT0)
+
+# theta = 0.001
+
+passageMapT0 = passage(landCondSub, origin = st_coordinates(publicCentroids)[3,], goal = st_coordinates(publicCentroids)[5,], theta=0.001)
+
+plot(passageMapT0)
+
+
+```
+
+Q. What patterns do you see emerge as theta increases? Comment on the tradeoffs between biological realism and ease of conservation planning based on these three different maps of connectivity.
+
+So, theta is the degree from which the path randomly deviates from the shortest path. Therefore, as theta increases, the paths should closer resemble the Euclidean path and I think that is pretty apparent from the three plots. As theta increased, the paths converged down to a more streamlined corridor. Biologically, individual animals are unlikely to know the shortest path and all of the associated habitats between point A and point B. Also, you have to keep in mind that an individual does not necessarily have a point A and point B (they're just out there trying to make a living). So, biologically, a theta of 0 is the closest scenario to real life. However, I feel like land managers can alter the landscape in a way that would semi-naturally lead individuals to take certain paths, which may result in a non-zero theta being realistic. From a conservation planning point of view, a theta of 0 is the least realistic option because you can not protect everything (unless you're Teddy Roosevelt in the early 1900s). Therefore, I think there is definitely a trade-off between protecting the most important habitat between patches and having the ability to do so. I mean, there is a whole scientific discipline based around this exact issue and several others dabble in it occasionally.
+
+
+# Challenge 4 (5 points)
+
+In the latter part of the lab, we discussed calculating patch-based and landscape-based metrics of connectivity. Patch number 6 had the lowest degree (n = 2) while patch number 7 had one of the highest degrees (n = 12). First delete patch number 6 from the network, and then examine the impacts on the landscape level metrics integral index of connectivity (ICC) and probability of connectivity (PC). Now replace patch 6 back into the network and instead delete patch number 7. Again, examine how ICC and PC change. How does the loss of patch 6 compare to the loss of patch 7 in terms of its impacts on landscape-level connectivity?
+
+```{r}
+# Code from lab
+
+# Data
+
+nodes = read.csv('https://raw.githubusercontent.com/ValenteJJ/SpatialEcology/main/Week12/kite_nodes.csv')
+area = nodes$area
+
+
+aObs = read.csv('https://raw.githubusercontent.com/ValenteJJ/SpatialEcology/main/Week12/kite_movement.csv')[,-1]
+diag(aObs) = 0
+
+
+##### Full Data #####
+
+# Distance Matrix (distance between nodes)
+
+coords = cbind(nodes$XCoord, nodes$YCoord)
+distMat = pointDistance(coords, lonlat=F)
+distMat = distMat / 1000 # in km
+
+
+linkLoc = which(aObs > 0, arr.ind=T)
+withinDisp = cbind(distMat[linkLoc], aObs[linkLoc])
+
+# Creating one distance observation for each individual
+withinDisp = rep(withinDisp[,1], withinDisp[,2])
+
+# Calculate mean dispersal distance
+aMeanDist = mean(withinDisp)
+
+
+# Create the transition matrix
+aMean = matrix(0, nrow=nrow(aObs), ncol=ncol(aObs))
+aMean[distMat < aMeanDist] = 1
+diag(aMean) = 0
+
+
+aProb = matrix(0, nrow=nrow(aObs), ncol=ncol(aObs))
+alpha = 1/aMeanDist
+
+# Calculate weights in the distance matrix
+aProb = exp(-alpha*distMat)
+diag(aProb)=0
+
+
+graphAmean = graph_from_adjacency_matrix(aMean, mode='undirected')
+graphAprob = graph_from_adjacency_matrix(aProb, mode='undirected', weighted=T)
+graphAobs = graph_from_adjacency_matrix(as.matrix(aObs), mode='directed', weighted=T)
+
+# the integral index of connectivity 
+
+AL = 63990 # Approximate study area in km^2
+
+  # Create a matrix of shortet paths
+nlMat = distances(graphAmean)
+
+  # In cases where you have isolated patches, we assign an arbitrarily large value
+nlMat [is.infinite(nlMat)] = 1000
+
+iicMat = outer(area, area)/(1+nlMat)
+iic = sum(iicMat)/AL^2
+iic
+
+# Probability of connectivity
+
+pStarMat = distances(graphAprob, weights=E(graphAprob)$weight)
+
+  # Back-transform to probabilities
+pStarMat = exp(-pStarMat)
+
+  # Numerator of PC
+pcNum = outer(area, area)*pStarMat
+
+  # Probability of connectivity
+pc = sum(pcNum)/AL^2
+pc
+
+
+##### Without Patch 6 #####
+
+nodes6 <- nodes[-6,]
+area6 = nodes6$area
+
+
+aObs6 <- aObs[-6,]
+aObs6 <- aObs6[,-6]
+
+# Distance Matrix (distance between nodes)
+
+coords6 = cbind(nodes6$XCoord, nodes6$YCoord)
+distMat6 = pointDistance(coords6, lonlat=F)
+distMat6 = distMat6 / 1000 # in km
+
+
+linkLoc6 = which(aObs6 > 0, arr.ind=T)
+withinDisp6 = cbind(distMat6[linkLoc6], aObs6[linkLoc6])
+
+# Creating one distance observation for each individual
+withinDisp6 = rep(withinDisp6[,1], withinDisp6[,2])
+
+# Calculate mean dispersal distance
+aMeanDist6 = mean(withinDisp6)
+
+
+# Create the transition matrix
+aMean6 = matrix(0, nrow=nrow(aObs6), ncol=ncol(aObs6))
+aMean6[distMat6 < aMeanDist6] = 1
+diag(aMean6) = 0
+
+
+aProb6 = matrix(0, nrow=nrow(aObs6), ncol=ncol(aObs6))
+alpha6 = 1/aMeanDist6
+
+# Calculate weights in the distance matrix
+aProb6 = exp(-alpha6*distMat6)
+diag(aProb6)=0
+
+
+graphAmean6 = graph_from_adjacency_matrix(aMean6, mode='undirected')
+graphAprob6 = graph_from_adjacency_matrix(aProb6, mode='undirected', weighted=T)
+graphAobs6 = graph_from_adjacency_matrix(as.matrix(aObs6), mode='directed', weighted=T)
+
+# the integral index of connectivity 
+
+AL = 63990 # Approximate study area in km^2
+
+  # Create a matrix of shortet paths
+nlMat6 = distances(graphAmean6)
+
+  # In cases where you have isolated patches, we assign an arbitrarily large value
+nlMat6 [is.infinite(nlMat6)] = 1000
+
+iicMat6 = outer(area6, area6)/(1+nlMat6)
+iic6 = sum(iicMat6)/AL^2
+iic6
+
+# Probability of connectivity
+
+pStarMat6 = distances(graphAprob6, weights=E(graphAprob6)$weight)
+
+  # Back-transform to probabilities
+pStarMat6 = exp(-pStarMat6)
+
+  # Numerator of PC
+pcNum6 = outer(area6, area6)*pStarMat6
+
+  # Probability of connectivity
+pc6 = sum(pcNum6)/AL^2
+pc6
+
+
+##### Without Patch 7 #####
+
+
+nodes7 <- nodes[-7,]
+area7 = nodes7$area
+
+
+aObs7 <- aObs[-7,]
+aObs7 <- aObs7[,-7]
+
+# Distance Matrix (distance between nodes)
+
+coords7 = cbind(nodes7$XCoord, nodes7$YCoord)
+distMat7 = pointDistance(coords7, lonlat=F)
+distMat7 = distMat7 / 1000 # in km
+
+
+linkLoc7 = which(aObs7 > 0, arr.ind=T)
+withinDisp7 = cbind(distMat6[linkLoc7], aObs6[linkLoc7])
+
+# Creating one distance observation for each individual
+withinDisp7 = rep(withinDisp7[,1], withinDisp7[,2])
+
+# Calculate mean dispersal distance
+aMeanDist7 = mean(withinDisp7)
+
+
+# Create the transition matrix
+aMean7 = matrix(0, nrow=nrow(aObs7), ncol=ncol(aObs7))
+aMean7[distMat7 < aMeanDist7] = 1
+diag(aMean7) = 0
+
+
+aProb7 = matrix(0, nrow=nrow(aObs7), ncol=ncol(aObs7))
+alpha7 = 1/aMeanDist7
+
+# Calculate weights in the distance matrix
+aProb7 = exp(-alpha7*distMat7)
+diag(aProb7)=0
+
+
+graphAmean7 = graph_from_adjacency_matrix(aMean7, mode='undirected')
+graphAprob7 = graph_from_adjacency_matrix(aProb7, mode='undirected', weighted=T)
+graphAobs7 = graph_from_adjacency_matrix(as.matrix(aObs7), mode='directed', weighted=T)
+
+# the integral index of connectivity 
+
+AL = 63990 # Approximate study area in km^2
+
+  # Create a matrix of shortet paths
+nlMat7 = distances(graphAmean7)
+
+  # In cases where you have isolated patches, we assign an arbitrarily large value
+nlMat7 [is.infinite(nlMat7)] = 1000
+
+iicMat7 = outer(area7, area7)/(1+nlMat7)
+iic7 = sum(iicMat7)/AL^2
+iic7
+
+# Probability of connectivity
+
+pStarMat7 = distances(graphAprob7, weights=E(graphAprob7)$weight)
+
+  # Back-transform to probabilities
+pStarMat7 = exp(-pStarMat7)
+
+  # Numerator of PC
+pcNum7 = outer(area7, area7)*pStarMat7
+
+  # Probability of connectivity
+pc7 = sum(pcNum7)/AL^2
+pc7
+
+##### Combined #####
+
+tmp <- data.frame(dat = c("Full", "Without6", "Without7"), IIC = c(iic, iic6, iic7), PC = c(pc, pc6, pc7))
+
+tmp
+
+```
+
+Q. How does the loss of patch 6 compare to the loss of patch 7 in terms of its impacts on landscape-level connectivity?
+
+Okay, first off, I may have done this incorrectly because the differences in these numbers are not as large as I would suspect. However, the loss of patch 6 resulted in a much smaller decline in landscape-level connectivity than the loss of patch 7. In fact, PC increased with the loss of patch 6. I think this all makes sense as losing a poorly connected patch should have a much smaller effect on landscape-level connectivity than the loss of a well-connected patch.
+
+
+
+
+
+
+
