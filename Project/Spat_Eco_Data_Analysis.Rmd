@@ -1,0 +1,431 @@
+---
+title: "Lab2_Assignment"
+output: html_document
+date: "2024-01-16"
+---
+
+
+### Inset Map ###
+
+Below, I am loading packages and receiver sites.
+
+```{r}
+require(tidyverse)
+require(sf)
+require(tigris)
+require(geodata)
+require(terra)
+require(colorspace)
+require(tidyterra)
+require(ggnewscale)
+require(cowplot)
+require(ggspatial)
+require(ggpubr)
+require(gridExtra)
+require(readr)
+require(nhdplusTools)
+require(devtools)
+install_github('USEPA/StreamCatTools')
+require(StreamCatTools)
+
+require(dismo)
+require(predicts)
+require(mgcv)
+require(maxnet)
+require(spatialEco)
+require(enmSdmX)
+
+
+PBlocs = read_csv("https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/PalebackLocations.csv")
+
+```
+
+Lets plot the sites.
+
+```{r}
+ggplot(PBlocs, aes(x=Longitude, y=Latitude, color = Present))+
+  geom_point()
+```
+
+Time to get geo-spatial.
+
+```{r}
+PBlocsSf = st_as_sf(PBlocs, coords=c('Longitude', 'Latitude'), crs=4326)
+plot(PBlocsSf)
+
+PBlocsSf$COMID <- 0
+
+PBlocsSf <- st_centroid(PBlocsSf)
+
+for (i in 1:nrow(PBlocsSf)){
+  PBlocsSf[i, "COMID"] = discover_nhdplus_id(PBlocsSf[i,])
+}
+
+```
+
+Lets read in the basin and flowlines. We're also going to get COMIDs and link that to environmental data.
+
+```{r}
+
+# read in HUC boundaries
+Basin <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/Basin/WBDHU6.shp")
+
+# boom, just a shape
+plot(st_geometry(Basin))
+
+# whats the projection
+st_crs(Basin)$proj4string
+
+# read in study rivers (these two files are NHD data with all stream segments in each HUC 8 basin. 0101 is the Ouachita Headwaters and 0102 is the Upper Ouachita). 
+St0101 <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/0101//NHDFlowline.shp")
+
+
+St0102 <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/0102//NHDFlowline.shp")
+
+
+# need to remove Z and M ranges from stream shapefiles
+St0101 = st_zm(St0101)
+St0102 = st_zm(St0102)
+
+# Make both sf objects
+
+St0101<- st_as_sf(St0101)
+St0102<- st_as_sf(St0102)
+
+# Now this is a little western... I need to get the COMID for every stream segment, but the point cannot be the node where two stream segments meet. So, I use the st_centroid function to get the middle of each stream segment, which should correspond to a single COMID for each (but this isn't the case because some COMIDs are listed twice and some are not listed at all). This takes forever on every computer that I have tried it on...
+
+tmp0101 <- st_centroid(St0101)
+tmp0101$COMID <- 0
+
+for (i in 1:nrow(tmp0101)){
+  tmp0101[i, "COMID"] = sc_get_comid(tmp0101[i,])
+}
+
+tmp0102 <- st_centroid(St0102)
+tmp0102$COMID <- 0
+
+for (i in 1:nrow(tmp0102)){
+  tmp0102[i, "COMID"] = sc_get_comid(tmp0102[i,])
+}
+
+# Put the COMIDs back to the flowlines
+
+St0101$COMID <- tmp0101$COMID
+
+St0102$COMID <- tmp0102$COMID
+
+
+# How many are unique? This so we have less than half of the total COMIDs for each basin... that is not good
+
+summary(unique(St0101$COMID))
+summary(unique(St0102$COMID))
+
+## Lets get some variables from StreamCat and merge them back into the main sf object
+
+St0101var <- sc_get_data(comid = St0101$COMID, aoi='catchment', metric='BFI,fert,RdDens,RdCrs,Tmean8110,Precip8110,Elev,HUDen2010')
+
+St0101f <- merge(St0101, St0101var, by = "COMID")
+
+
+St0102var <- sc_get_data(comid = St0102$COMID, aoi='catchment', metric='BFI,fert,RdDens,RdCrs,Tmean8110,Precip8110,Elev,HUDen2010')
+
+St0102f <- merge(St0102, St0102var, by = "COMID")
+
+
+## Okay, now lets combine the two basins so we have just one object to work with
+
+EnvFull <- rbind(St0101f, St0102f)
+
+# Wow, that was a lot of manipulation for something that shouldve been so easy, lets plot it
+
+# whats the projection
+st_crs(EnvFull)$proj4string
+st_crs(PBlocsSf)$proj4string
+PBlocsSf = st_transform(PBlocsSf, st_crs(EnvFull))
+
+
+# what do we have so far... Projs differ atm, but its looking good.
+ggplot()+
+  geom_sf(data = EnvFull, color = "lightblue") +
+  geom_sf(data = PBlocsSf, aes(color = Present))
+```
+
+Here is the state of Arkansas
+
+```{r}
+arkansas = states() %>% 
+  filter(NAME=='Arkansas')
+
+#whats the projection
+st_crs(arkansas)$proj4string
+```
+
+
+These two projection systems need to be the same.
+
+```{r}
+arkansas = st_transform(arkansas, st_crs(EnvFull))
+```
+
+
+Lets throw everything together for the small map (hint: it is very ugly at the moment).
+
+```{r}
+ggplot()+
+  geom_sf(data = st_geometry(arkansas), fill = "white") +
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = st_geometry(EnvFull), color = "darkblue") +
+  geom_sf(data = PBlocsSf)
+```
+
+### Modeling ###
+
+Now that we know everything looks good spatially, lets go ahead and do some habitat modeling. First, we'll geet the present and randomly-sampled background data together.
+
+```{r}
+
+# Break present and absent from PB data
+
+PalePres = PBlocsSf %>% filter(Present==1)
+PaleAbs = PBlocsSf %>% filter(Present==0)
+
+presSegs <- EnvFull %>%
+      filter(COMID %in% PalePres$COMID)
+
+presSegs$Present = 1
+
+# Background points
+
+set.seed(73)
+
+backSegs <- sample_n(EnvFull, 200)
+
+backSegs$Present <- 0
+
+ggplot()+
+  geom_sf(data = EnvFull) + 
+  geom_sf(data = backSegs, color = "red") +
+  geom_sf(data = presSegs, color='green')
+
+# were any segments with presences randomly selected?
+
+tmp <- st_equals(presSegs, backSegs)
+
+# there is 1, lets just delete it...
+
+backSegs<- backSegs[-33,]
+
+# Lets put them together
+
+PresBackSegs = rbind(presSegs, backSegs)
+
+PresBackSegs <- as.data.frame(PresBackSegs)
+
+```
+
+Now that we have a dataset of presence and background segments, lets actually model.
+
+```{r}
+
+# The model
+
+pbVect = PresBackSegs$Present
+
+covs <- PresBackSegs %>% dplyr::select(WSAREASQKM:TMEAN8110CAT)
+
+maxentModel = maxnet(p = pbVect,
+                     data= covs,
+                     regmult = 1,
+                     classes='lqpht')
+
+plot(maxentModel, type='logistic')
+
+# Projection
+
+maxentMap = predictMaxNet(maxentModel, as.data.frame(EnvFull), type='logistic')
+
+dff <- merge(EnvFull, maxentMap)
+
+
+par(mfrow=c(1,1))
+plot(maxentMap)
+
+```
+
+### Study Site Map ###
+
+Lets see what projection everything is in.
+
+```{r}
+
+crs(Basin, proj = T)
+Basin = st_transform(Basin, st_crs(siteSf))
+crs(Basin, proj = T)
+
+
+crs(mississippi, proj = T)
+
+st_crs(siteSf)$proj4string
+
+crs(Rivers, proj = T)
+Rivers = st_transform(Rivers, st_crs(mississippi))
+crs(Rivers, proj = T)
+
+crs(Lakes, proj = T)
+Lakes = st_transform(Lakes, st_crs(mississippi))
+crs(Lakes, proj = T)
+
+
+```
+
+Lets go zoomed out
+
+```{r}
+zoomedOut = ggplot()+
+  geom_sf(data = mississippi, fill = "white", color = "black", linewidth = 0.5)+
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.1)
+
+zoomedOut
+```
+
+Now to clean it up a little bit...
+
+```{r}
+zoomedOut = zoomedOut +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1), plot.margin = margin(t = 0, r = 0, b = 0, l = 0))
+
+zoomedOut
+```
+
+Lets go zoomed in
+
+```{r}
+zoomedIn = ggplot()+
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.5) 
+
+zoomedIn
+```
+
+Clean it up...
+
+```{r}
+zoomedIn = zoomedIn+
+  new_scale_fill()+
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-91.0, -90.0, -89.0), labels = scales::label_number(accuracy = 0.1)) +
+  scale_y_continuous(breaks = c(33.0, 34.0, 35.0), labels = scales::label_number(accuracy = 0.1))
+
+zoomedIn
+```
+
+Now lets add a bunch of stuff to our blank canvas...
+
+```{r}
+
+zoomedIn = zoomedIn +
+  geom_sf(data = Rivers, color = "black") +
+  geom_sf(data = st_geometry(Lakes), color = "black", fill = "black") +
+  geom_sf(data = siteSf, aes(pch=Description), fill='white', color = "black", size = 2) +
+  scale_shape_manual(values=c(21, 22, 23), name='', labels = c("Receivers", "Stream Gauges", "Access Locations")) +
+  geom_rect(aes(xmin = -90.27, xmax = -90.14, ymin = 33.5, ymax = 33.6), linewidth = 1, color = "black", fill = NA) +
+  geom_rect(aes(xmin = -91.05, xmax = -90.80, ymin = 32.4, ymax = 32.6), linewidth = 1, color = "black", fill = NA) +
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  theme(legend.position = "none") +
+  annotation_north_arrow(location = "tl", which_north = "true", style = north_arrow_fancy_orienteering())
+ 
+
+  
+zoomedIn
+```
+
+
+### Putting the primary map together
+
+```{r}
+
+map_with_inset <-
+  ggdraw(zoomedIn) +
+  draw_plot(zoomedOut, x = 0.62, y = 0.06, width = 0.345, height = 0.40, halign = 0, valign = 0)
+
+map_with_inset
+
+## Note: the inset map does not look good at the moment, but that's because it got wonky later with ggarrange, so I have modified it to look better in the end product rather than now. This will come up several times later.
+```
+
+### Now lets break these apart to look at the upper and lower array specifically.
+
+First, I don't think elevation raster is needed for these panels as the extent will all be in the floodplain, and thus, relatively small differences in elevation. Additionally, the map will not change in orientation, so additional north arrows are not needed. So, lets remake the zoomedIn map, but without elevation and north arrow...
+
+```{r}
+zoomedInClean = ggplot() +
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 1) +
+  geom_sf(data = Rivers, color = "black", linewidth = 1) +
+  geom_sf(data = st_geometry(Lakes), color = "black", fill = "black") +
+  geom_sf(data = siteSf, aes(pch=Description), fill='white', color = "black", size = 3) +
+  scale_shape_manual(values=c(21, 22, 23), name='', labels = c("Receivers", "Stream Gauges", "Access Locations")) +  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 90, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1), legend.position = "none")
+
+
+zoomedInClean
+```
+
+Now, lets isolate the upper array. We'll also label the rivers in this step (this was tedious, but I could not find an automated way that did not require creating additional data files with lat/long and labels for each river).
+
+
+```{r}
+
+upper_array <- zoomedInClean +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  geom_text(x = -90.165, y = 33.58, aes(label = "Yalobusha River"), angle = 50, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.20, y = 33.527, aes(label = "Yazoo River"), angle = 0, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.232, y = 33.57, aes(label = "Tallahatchie River"), angle = 55, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_label(x = -90.165, y = 33.502, aes(label = "Upper Array"), angle = 0, size = 4.5, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  scale_x_continuous(limits = c(-90.27, -90.14)) +
+  scale_y_continuous(limits = c(33.5, 33.6)) 
+
+upper_array
+
+```
+
+Upper array looked good. How about the lower array...
+
+```{r}
+
+lower_array <- zoomedInClean  +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  geom_text(x = -90.85, y = 32.475, aes(label = "Yazoo River"), angle = 40, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -90.84, y = 32.53, aes(label = "Big Sunflower River"), angle = 60, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -91.00, y = 32.563, aes(label = "Steele Bayou"), angle = 90, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_text(x = -91.01, y = 32.475, aes(label = "Eagle Lake"), angle = 350, size = 3, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  geom_label(x = -90.85, y = 32.405, aes(label = "Lower Array"), angle = 0, size = 4.5, family = "Times New Roman", fontface = "bold", check_overlap = TRUE) +
+  scale_x_continuous(limits = c(-91.05, -90.8)) +
+  scale_y_continuous(limits = c(32.4, 32.6))
+
+lower_array
+
+```
+
+### Now, lets put it all together...
+
+```{r}
+
+final <- ggarrange(map_with_inset,                                                 # First row with basin
+          ggarrange(upper_array, lower_array, nrow = 2, labels = NULL, align = "hv"), # Second col with confluences
+          ncol = 2, 
+          widths = c(1.8, 1.2),
+          labels = NULL,
+          align = "hv"
+          ) 
+
+final 
+
+#ggsave(filename = "StudyAreaMap.tiff", plot = final, scale = 1, width = 7.25, height = 5.5, units = "in", dpi = "retina")
+
+```
+
