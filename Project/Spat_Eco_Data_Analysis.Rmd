@@ -59,11 +59,7 @@ Now, we will have to manipulate the data to link each occurrence to a specific s
 
 # Make it a spatial object
 
-PBlocsSf = st_as_sf(PBlocs, coords=c('Longitude', 'Latitude'), crs=4326)
-
-# Lets quickly plot it (it will show each variable associated with the points)
-
-plot(PBlocsSf)
+PBlocsSf = st_as_sf(PBlocs, coords=c('Longitude', 'Latitude'), crs=4269)
 
 # Lets make a dummy column to fill with COMIDs
 
@@ -76,7 +72,7 @@ PBlocsSf <- st_centroid(PBlocsSf)
 # This function links each point to a COMID
 
 for (i in 1:nrow(PBlocsSf)){
-  PBlocsSf[i, "COMID"] = sc_get_comid(PBlocsSf[i,])
+  PBlocsSf[i, "COMID"] = discover_nhdplus_id(PBlocsSf[i,])
 }
 
 ```
@@ -173,12 +169,12 @@ Now that each stream segment has an associated COMID (even though they are not e
 
 ## Here, we are first getting environmental data from the StreamCat database with the sc_get_data function and then merging that data back into the main sf object by the COMID.
 
-St0101var <- sc_get_data(comid = St0101$COMID, aoi='catchment', metric='BFI,Tmean8110,Precip8110,Elev,HUDen2010')
+St0101var <- sc_get_data(comid = St0101$COMID, aoi='catchment', metric='BFI,Precip8110,Elev,fert,HUDen2010')
 
 St0101f <- merge(St0101, St0101var, by = "COMID")
 
 
-St0102var <- sc_get_data(comid = St0102$COMID, aoi='catchment', metric='BFI,Tmean8110,Precip8110,Elev,HUDen2010')
+St0102var <- sc_get_data(comid = St0102$COMID, aoi='catchment', metric='BFI,Precip8110,Elev,fert,HUDen2010')
 
 St0102f <- merge(St0102, St0102var, by = "COMID")
 
@@ -201,6 +197,13 @@ ggplot()+
   geom_sf(data = EnvFull, color = "lightblue") +
   geom_sf(data = PBlocsSf, aes(color = Present))
 
+
+# now lets check for any multicolinearity
+
+EnvCor <- data.frame(catchmentarea = EnvFull$CATAREASQKM, Elevation = EnvFull$ELEVCAT, BFI = EnvFull$BFICAT, HumanDen = EnvFull$HUDEN2010CAT, Precipitation = EnvFull$PRECIP8110CAT, Fertilizer = EnvFull$FERTCAT)
+
+cor(EnvCor)
+
 ```
 
 
@@ -222,7 +225,7 @@ presSegs$Present = 1
 
 ```
 
-Next, we will randomly select 200 stream segments to serve as background locations (i.e., pseudo-absences). Since we cannot exclude sampled sites with this method, we will have to manually check if any of the randomly-selected background segments were sampled in the occupancy study. If there are randomly-selected sites that were previously sampled, we will remove them. Finally, we will merge the present and background locations to fit our models.
+Next, we will randomly select 200 stream segments to serve as background locations (i.e., pseudo-absences). Finally, we will merge the present and background locations to fit our models.
 
 ```{r}
 
@@ -230,7 +233,7 @@ Next, we will randomly select 200 stream segments to serve as background locatio
 
 set.seed(73)
 
-backSegs <- sample_n(EnvFull, 200)
+backSegs <- dplyr::slice_sample(EnvFull %>% filter(!COMID %in% presSegs$COMID), n = 200)
 
 backSegs$Present <- 0
 
@@ -242,10 +245,6 @@ ggplot()+
 # Were any previously-sampled stream segments randomly selected as background stream segments?
 
 tmp <- st_equals(presSegs, backSegs)
-
-# There is 1 randomly-selected stream segment that was previously selected, lets just delete it.
-
-backSegs<- backSegs[-33,]
 
 # Lets put the present and background stream segments together.
 
@@ -267,7 +266,7 @@ pbVect = PresBackSegs$Present
 
 # The maxnet function also requires the environmental variables to be specified.
 
-covs <- PresBackSegs %>% dplyr::select(CATAREASQKM:TMEAN8110CAT)
+covs <- PresBackSegs %>% dplyr::select(CATAREASQKM:PRECIP8110CAT)
 
 # Here, we will actually fit the MaxEnt model.
 
@@ -286,9 +285,9 @@ Now, we will project the model over across the entire catchment using the predic
 
 ```{r}
 
-maxentMap = predictMaxNet(maxentModel, as.data.frame(EnvFull), type='logistic')
+Suitability = predictMaxNet(maxentModel, as.data.frame(EnvFull), type='logistic')
 
-plot(maxentMap)
+plot(Suitability)
 
 ```
 
@@ -296,12 +295,16 @@ Now, we can combine the model predictions and the main spatial object and plot t
 
 ```{r}
 
-projected <- cbind(EnvFull, maxentMap)
+projected <- cbind(EnvFull, Suitability)
 
 ggplot()+
   geom_sf(data = st_geometry(Basin), fill = "gray95") +
-  geom_sf(data = EnvFull, aes(color = maxentMap)) +
-  scale_color_viridis_c(option = "magma")
+  geom_sf(data = projected, aes(color = Suitability)) +
+  scale_color_viridis_c(option = "viridis") +
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-94.25, -93.50, -92.75), labels = scales::label_number(accuracy = 0.01)) +
+  scale_y_continuous(breaks = c(33.75, 34.25, 34.75), labels = scales::label_number(accuracy = 0.01))
 
 ```
 
@@ -309,9 +312,11 @@ ggplot()+
 ### Model performance and validation ###
 
 
-Now that we have fit a MaxEnt model and projected it across the catchment, we can assess how well our model performs. 
+Now that we have fit a MaxEnt model and projected it across the catchment, we can assess how well our model performs. We will do this by calculating the Boyce index for a series of cross-validations and averaging it across all.
 
 ```{r}
+
+require(ecospat)
 
 set.seed(73)
 
@@ -320,31 +325,29 @@ presSegsdf <- as.data.frame(presSegs)
 backSegsdf <- as.data.frame(backSegs)
 
 nFolds = 4
-kfoldPres = kfold(presSegs, k=nFolds)
-kfoldBack = kfold(backSegs, k=nFolds)
+kfoldPres = kfold(presSegsdf, k=nFolds)
+kfoldBack = kfold(backSegsdf, k=nFolds)
 
 boyceVals = rep(NA, nFolds)
 
 for(i in 1:nFolds){
-  valPres = presCovs[kfoldPres==i,]
+  valPres = presSegsdf[kfoldPres==i,]
   
-  trainPres = presCovs[kfoldPres!=i,]
-  trainBack = backCovs[kfoldBack!=i,]
+  trainPres = presSegsdf[kfoldPres!=i,]
+  trainBack = backSegsdf[kfoldBack!=i,]
   trainBoth = rbind(trainPres, trainBack)
   
   Model2 = maxnet(p = pbVect, data= covs, regmult = 1, classes='lqpht')
 
-  valData = data.frame('ID' = 1:nrow(valPres)) %>% 
-  mutate(obs = valPres$pres,
-         MEVal = predict(Model2, valPres %>% select(canopy:precip), type='response'))
+  valData = data.frame('ID' = 1:nrow(valPres), COMID = valPres$COMID) %>% 
+  mutate(obs = valPres$Present,
+         MEVal = predict(Model2, valPres %>% dplyr::select(CATAREASQKM:PRECIP8110CAT), type='logistic'))
   
-boyceVals[i] = ecospat.boyce(fit = glmMap, obs=valData[,3], res=100, PEplot=F)$cor
+boyceVals[i] = ecospat.boyce(fit = maxentMap, obs=valData[,4], res=100, PEplot=F)$cor
 
 }
 
 mean(boyceVals)
-
-
 
 ```
 
@@ -374,8 +377,7 @@ Lets throw everything together for the small map (hint: it is very ugly at the m
 ggplot()+
   geom_sf(data = st_geometry(arkansas), fill = "white") +
   geom_sf(data = st_geometry(Basin), fill = "gray95") +
-  geom_sf(data = st_geometry(EnvFull), color = "darkblue") +
-  geom_sf(data = PBlocsSf)
+  geom_sf(data = st_geometry(EnvFull), color = "darkblue")
 
 ```
 
