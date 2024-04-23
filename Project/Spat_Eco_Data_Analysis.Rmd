@@ -257,7 +257,7 @@ PresBackSegs <- as.data.frame(PresBackSegs)
 
 ```
 
-Now that we have a data frame of presence and background stream segments identifiable by COMID and associated with environmental data, we can actually fit a habitat model. Here, we are modeling with maximum entropy (i.e., MaxEnt) using the maxnet function in the maxnet package. Then, we will project the model over across the entire catchment using the predictMaxnet function in the enmSdmX package. Finally, we will put the model prediction back into the main sf object and plot the catchment by the model prediction.
+Now that we have a data frame of presence and background stream segments identifiable by COMID and associated with environmental data, we can actually fit a habitat model. Here, we are modeling with maximum entropy (i.e., MaxEnt) using the maxnet function in the maxnet package. 
 
 ```{r}
 
@@ -267,7 +267,7 @@ pbVect = PresBackSegs$Present
 
 # The maxnet function also requires the environmental variables to be specified.
 
-covs <- PresBackSegs %>% dplyr::select(WSAREASQKM:TMEAN8110CAT)
+covs <- PresBackSegs %>% dplyr::select(CATAREASQKM:TMEAN8110CAT)
 
 # Here, we will actually fit the MaxEnt model.
 
@@ -280,21 +280,28 @@ maxentModel = maxnet(p = pbVect,
 
 plot(maxentModel, type='logistic')
 
-# Now, we will project the model across the catchment and plot to identify any potential outliers (recall that this is non-spatial data so it will be a basic scatter plot).
+```
+
+Now, we will project the model over across the entire catchment using the predictMaxnet function in the enmSdmX package and then plot the data to identify any potential outliers (recall that this is non-spatial data so it will be a basic scatter plot).
+
+```{r}
 
 maxentMap = predictMaxNet(maxentModel, as.data.frame(EnvFull), type='logistic')
 
 plot(maxentMap)
 
-# Now, we will bind the model predictions to the spatial object so that we can plot the actual stream segments with the model prediction.
+```
+
+Now, we can combine the model predictions and the main spatial object and plot the model predicted habitat suitability across the catchment from the spatial object (i.e., the plot will be show the actual stream segments).
+
+```{r}
 
 projected <- cbind(EnvFull, maxentMap)
 
-# Here is the predicted habitat suitability across the catchment
-
 ggplot()+
   geom_sf(data = st_geometry(Basin), fill = "gray95") +
-  geom_sf(data = EnvFull, aes(color = maxentMap))
+  geom_sf(data = EnvFull, aes(color = maxentMap)) +
+  scale_color_viridis_c(option = "magma")
 
 ```
 
@@ -305,6 +312,37 @@ ggplot()+
 Now that we have fit a MaxEnt model and projected it across the catchment, we can assess how well our model performs. 
 
 ```{r}
+
+set.seed(73)
+
+presSegsdf <- as.data.frame(presSegs)
+
+backSegsdf <- as.data.frame(backSegs)
+
+nFolds = 4
+kfoldPres = kfold(presSegs, k=nFolds)
+kfoldBack = kfold(backSegs, k=nFolds)
+
+boyceVals = rep(NA, nFolds)
+
+for(i in 1:nFolds){
+  valPres = presCovs[kfoldPres==i,]
+  
+  trainPres = presCovs[kfoldPres!=i,]
+  trainBack = backCovs[kfoldBack!=i,]
+  trainBoth = rbind(trainPres, trainBack)
+  
+  Model2 = maxnet(p = pbVect, data= covs, regmult = 1, classes='lqpht')
+
+  valData = data.frame('ID' = 1:nrow(valPres)) %>% 
+  mutate(obs = valPres$pres,
+         MEVal = predict(Model2, valPres %>% select(canopy:precip), type='response'))
+  
+boyceVals[i] = ecospat.boyce(fit = glmMap, obs=valData[,3], res=100, PEplot=F)$cor
+
+}
+
+mean(boyceVals)
 
 
 
