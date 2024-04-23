@@ -5,11 +5,12 @@ date: "2024-01-16"
 ---
 
 
-### Inset Map ###
+### Packages ###
 
-Below, I am loading packages and receiver sites.
+We will start by loading all of the packages that we will be using. Note that I have "turned off" all returns from this chunk. Therefore, if something does not load properly, you will not know unless you check.
 
-```{r}
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
 require(tidyverse)
 require(sf)
 require(tigris)
@@ -35,55 +36,87 @@ require(maxnet)
 require(spatialEco)
 require(enmSdmX)
 
+```
+
+### Occurence data ###
+
+These occurrence data are from a recently completed graduate project at the University of Arkansas, Pine Bluff (Hartman 2021). I have uploaded them to GitHub for the purposes of this project, but future use of these data will need to be approved by Maxwell Hartman (Arkansas Game and Fish Commission) and Steve Lochmann (University of Arkansas, Pine Bluff). This data is from an occupancy study, so there are both presences and absences in the dataset.
+
+We will start by reading in the data from GitHub using the read_csv function in the readr package. We will then plot each location by "Present".
+
+```{r}
 
 PBlocs = read_csv("https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/PalebackLocations.csv")
 
-```
-
-Lets plot the sites.
-
-```{r}
 ggplot(PBlocs, aes(x=Longitude, y=Latitude, color = Present))+
   geom_point()
+
 ```
 
-Time to get geo-spatial.
+Now, we will have to manipulate the data to link each occurrence to a specific stream segment. First, we will make the location data a spatial object using the st_as_sf function in the sf package. Then, we will link each location with a COMID using the sc_get_comid function from the StreamCatTools package.
 
 ```{r}
+
+# Make it a spatial object
+
 PBlocsSf = st_as_sf(PBlocs, coords=c('Longitude', 'Latitude'), crs=4326)
+
+# Lets quickly plot it (it will show each variable associated with the points)
+
 plot(PBlocsSf)
+
+# Lets make a dummy column to fill with COMIDs
 
 PBlocsSf$COMID <- 0
 
+# Here, we will get the centroid of each linestring
+
 PBlocsSf <- st_centroid(PBlocsSf)
 
+# This function links each point to a COMID
+
 for (i in 1:nrow(PBlocsSf)){
-  PBlocsSf[i, "COMID"] = discover_nhdplus_id(PBlocsSf[i,])
+  PBlocsSf[i, "COMID"] = sc_get_comid(PBlocsSf[i,])
 }
 
 ```
 
-Lets read in the basin and flowlines. We're also going to get COMIDs and link that to environmental data.
+### Basin and Flowlines ###
+
+Our occurrences are now linked to a stream segment via the COMID.
+
+Next, we will read in the basin polygon and flowlines and then link them to COMIDs so that we can retrieve environmental data across the entire basin. These data are from the National Hydrography Dataset (NHD) and are available for download from the USGS. I have uploaded the data to GitHub for this project. First, we will read in the basin polygon using the st_read function in the sf package. 
 
 ```{r}
 
-# read in HUC boundaries
+# Read in basin polygon
+
 Basin <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/Basin/WBDHU6.shp")
 
-# boom, just a shape
-plot(st_geometry(Basin))
+# Check the projection
 
-# whats the projection
 st_crs(Basin)$proj4string
 
-# read in study rivers (these two files are NHD data with all stream segments in each HUC 8 basin. 0101 is the Ouachita Headwaters and 0102 is the Upper Ouachita). 
+# Lets quickly plot it
+
+plot(st_geometry(Basin))
+
+```
+
+Next, we will read in the flowlines using the st_read function in the sf package and make them sf objects using the st_as_sf functon in the sf package. The flowlines are from two different HUC 8 catchments, so they are packaged separately (we will combine them later). The two different catchments are the Ouachita Headwaters (St0101) and the Upper Oauchita (St0102).
+
+```{r}
+
+# Read in flowlines
+
 St0101 <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/0101//NHDFlowline.shp")
 
 
 St0102 <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/0102//NHDFlowline.shp")
 
 
-# need to remove Z and M ranges from stream shapefiles
+# Remove Z and M ranges from stream segments (required to make them spatial objects)
+
 St0101 = st_zm(St0101)
 St0102 = st_zm(St0102)
 
@@ -92,7 +125,15 @@ St0102 = st_zm(St0102)
 St0101<- st_as_sf(St0101)
 St0102<- st_as_sf(St0102)
 
-# Now this is a little western... I need to get the COMID for every stream segment, but the point cannot be the node where two stream segments meet. So, I use the st_centroid function to get the middle of each stream segment, which should correspond to a single COMID for each (but this isn't the case because some COMIDs are listed twice and some are not listed at all). This takes forever on every computer that I have tried it on...
+```
+
+Next, we will get a COMID for each stream segment so that we can retrieve environmental data across the entire catchment. To do this, we will use the sc_get_comid function in the StreamCatTools package. 
+
+To get a COMID for each stream segment, we need a point for each stream segment, but that point cannot be a node where two stream segments meet. To solve this issue, we will approximate the center of each stream segment with the st_centroid function in the sf package. The sc_get_comid function in the StreamCatTools package will return a linestring of COMIDs if ran on the entire object, so we will have to use a for-loop. We will then put the COMIDs back into the main spatial objects.
+
+```{r}
+
+# Get COMIDs for each stream segment in the Ouachita Headwaters catchment
 
 tmp0101 <- st_centroid(St0101)
 tmp0101$COMID <- 0
@@ -100,6 +141,8 @@ tmp0101$COMID <- 0
 for (i in 1:nrow(tmp0101)){
   tmp0101[i, "COMID"] = sc_get_comid(tmp0101[i,])
 }
+
+# Get COMIDs for each stream segment in the Upper Ouachita catchment
 
 tmp0102 <- st_centroid(St0102)
 tmp0102$COMID <- 0
@@ -115,72 +158,55 @@ St0101$COMID <- tmp0101$COMID
 St0102$COMID <- tmp0102$COMID
 
 
-# How many are unique? This so we have less than half of the total COMIDs for each basin... that is not good
+# How many are unique? So we have less than half of the total COMIDs for each basin... that is not good
 
 summary(unique(St0101$COMID))
 summary(unique(St0102$COMID))
 
-## Lets get some variables from StreamCat and merge them back into the main sf object
+```
 
-St0101var <- sc_get_data(comid = St0101$COMID, aoi='catchment', metric='BFI,fert,RdDens,RdCrs,Tmean8110,Precip8110,Elev,HUDen2010')
+#### Linking environmental data ####
+
+Now that each stream segment has an associated COMID (even though they are not exact in this particular case), we can now link some environmental data to each stream segment. For this, we'll use the StreamCat database from the EPA through the StreamCatTools package. Note that any steam segment data identified by the COMID can now be linked to our stream segments (i.e., NHD VAA data).
+
+```{r}
+
+## Here, we are first getting environmental data from the StreamCat database with the sc_get_data function and then merging that data back into the main sf object by the COMID.
+
+St0101var <- sc_get_data(comid = St0101$COMID, aoi='catchment', metric='BFI,Tmean8110,Precip8110,Elev,HUDen2010')
 
 St0101f <- merge(St0101, St0101var, by = "COMID")
 
 
-St0102var <- sc_get_data(comid = St0102$COMID, aoi='catchment', metric='BFI,fert,RdDens,RdCrs,Tmean8110,Precip8110,Elev,HUDen2010')
+St0102var <- sc_get_data(comid = St0102$COMID, aoi='catchment', metric='BFI,Tmean8110,Precip8110,Elev,HUDen2010')
 
 St0102f <- merge(St0102, St0102var, by = "COMID")
 
 
-## Okay, now lets combine the two basins so we have just one object to work with
+## Okay, now lets combine the two basins so we have just one object to work with (we could have done this earlier, but previous functions took a while to run even with the catchments separated).
 
 EnvFull <- rbind(St0101f, St0102f)
 
-# Wow, that was a lot of manipulation for something that shouldve been so easy, lets plot it
+# Lets quickly plot the flowlines to make sure that it still looks right.
 
-# whats the projection
+# First, we will check the projections
+
 st_crs(EnvFull)$proj4string
 st_crs(PBlocsSf)$proj4string
 PBlocsSf = st_transform(PBlocsSf, st_crs(EnvFull))
 
+# Now, lets plot it
 
-# what do we have so far... Projs differ atm, but its looking good.
 ggplot()+
   geom_sf(data = EnvFull, color = "lightblue") +
   geom_sf(data = PBlocsSf, aes(color = Present))
+
 ```
 
-Here is the state of Arkansas
-
-```{r}
-arkansas = states() %>% 
-  filter(NAME=='Arkansas')
-
-#whats the projection
-st_crs(arkansas)$proj4string
-```
-
-
-These two projection systems need to be the same.
-
-```{r}
-arkansas = st_transform(arkansas, st_crs(EnvFull))
-```
-
-
-Lets throw everything together for the small map (hint: it is very ugly at the moment).
-
-```{r}
-ggplot()+
-  geom_sf(data = st_geometry(arkansas), fill = "white") +
-  geom_sf(data = st_geometry(Basin), fill = "gray95") +
-  geom_sf(data = st_geometry(EnvFull), color = "darkblue") +
-  geom_sf(data = PBlocsSf)
-```
 
 ### Modeling ###
 
-Now that we know everything looks good spatially, lets go ahead and do some habitat modeling. First, we'll geet the present and randomly-sampled background data together.
+Now that we know everything looks good spatially, we will go ahead and do some habitat modeling. First, wewill need to separate our original occurrence data to present locations and absent locations. 
 
 ```{r}
 
@@ -193,6 +219,12 @@ presSegs <- EnvFull %>%
       filter(COMID %in% PalePres$COMID)
 
 presSegs$Present = 1
+
+```
+
+Next, we will randomly select 200 stream segments to serve as background locations (i.e., pseudo-absences). Since we cannot exclude sampled sites with this method, we will have to manually check if any of the randomly-selected background segments were sampled in the occupancy study. If there are randomly-selected sites that were previously sampled, we will remove them. Finally, we will merge the present and background locations to fit our models.
+
+```{r}
 
 # Background points
 
@@ -207,52 +239,108 @@ ggplot()+
   geom_sf(data = backSegs, color = "red") +
   geom_sf(data = presSegs, color='green')
 
-# were any segments with presences randomly selected?
+# Were any previously-sampled stream segments randomly selected as background stream segments?
 
 tmp <- st_equals(presSegs, backSegs)
 
-# there is 1, lets just delete it...
+# There is 1 randomly-selected stream segment that was previously selected, lets just delete it.
 
 backSegs<- backSegs[-33,]
 
-# Lets put them together
+# Lets put the present and background stream segments together.
 
 PresBackSegs = rbind(presSegs, backSegs)
+
+# For some reason, the model was having issues with the data as a spatial object, so we will convert to a data frame.
 
 PresBackSegs <- as.data.frame(PresBackSegs)
 
 ```
 
-Now that we have a dataset of presence and background segments, lets actually model.
+Now that we have a data frame of presence and background stream segments identifiable by COMID and associated with environmental data, we can actually fit a habitat model. Here, we are modeling with maximum entropy (i.e., MaxEnt) using the maxnet function in the maxnet package. Then, we will project the model over across the entire catchment using the predictMaxnet function in the enmSdmX package. Finally, we will put the model prediction back into the main sf object and plot the catchment by the model prediction.
 
 ```{r}
 
-# The model
+# The maxnet function needs a subset of locations that were occupied.
 
 pbVect = PresBackSegs$Present
 
+# The maxnet function also requires the environmental variables to be specified.
+
 covs <- PresBackSegs %>% dplyr::select(WSAREASQKM:TMEAN8110CAT)
+
+# Here, we will actually fit the MaxEnt model.
 
 maxentModel = maxnet(p = pbVect,
                      data= covs,
                      regmult = 1,
                      classes='lqpht')
 
+# Here, we will plot the regressions for each variable.
+
 plot(maxentModel, type='logistic')
 
-# Projection
+# Now, we will project the model across the catchment and plot to identify any potential outliers (recall that this is non-spatial data so it will be a basic scatter plot).
 
 maxentMap = predictMaxNet(maxentModel, as.data.frame(EnvFull), type='logistic')
 
-dff <- merge(EnvFull, maxentMap)
-
-
-par(mfrow=c(1,1))
 plot(maxentMap)
+
+# Now, we will bind the model predictions to the spatial object so that we can plot the actual stream segments with the model prediction.
+
+projected <- cbind(EnvFull, maxentMap)
+
+# Here is the predicted habitat suitability across the catchment
+
+ggplot()+
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = EnvFull, aes(color = maxentMap))
+
+```
+
+
+### Model performance and validation ###
+
+
+Now that we have fit a MaxEnt model and projected it across the catchment, we can assess how well our model performs. 
+
+```{r}
+
+
 
 ```
 
 ### Study Site Map ###
+
+Now, we will construct a nice map of our study area with the associated occurrences as points and then improve our projection map from our model results. First, we will get a polygon of the state of Arkansas. We can pull a polygon of any state from the tigris package. If for some reason you need state data from specific years (i.e., not just the polygon), you can specify the year in the states function. Here, we just need the polygon for mapping purposes.
+
+```{r}
+
+arkansas = states() %>% 
+  filter(NAME=='Arkansas')
+
+# Lets check the projection
+
+st_crs(arkansas)$proj4string
+
+# Lets change the projection to match the flowlines
+
+arkansas = st_transform(arkansas, st_crs(EnvFull))
+
+```
+
+
+Lets throw everything together for the small map (hint: it is very ugly at the moment).
+
+```{r}
+ggplot()+
+  geom_sf(data = st_geometry(arkansas), fill = "white") +
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = st_geometry(EnvFull), color = "darkblue") +
+  geom_sf(data = PBlocsSf)
+
+```
+
 
 Lets see what projection everything is in.
 
