@@ -164,6 +164,8 @@ What do you notice? Explain the similarities and/or differences in how you would
 
 Well, the two sets of values are EXTREMELY similar. In fact, they are so similar that I assume the difference is due to rounding errors between the model parameterization and exponentiation. These two values being similar makes sense as they both should essentially be a ratio between used and available. I would interpret the two values the same as increases in each means that a habitat was used in higher proportion than its relative availability.
 
+$\color{red}{\text{Good. Basically, the exponentiated beta coefficients represent the odds ratios for the various cover types (i.e., the odds a point in that category is used divided by the odds is is not used). This is the same way that wi is calculated. The only difference here is that we're now including a random effect to account for non-independence among points selected by the same panther. +5}}$
+
 
 # Challenge 2 (5 points)
 
@@ -230,6 +232,8 @@ When and why might you choose to sample from a distribution of step speeds to ca
 
 I think using step speed is really interesting because it may account for detections at different intervals. For example, if you were just using step length, a step measured between three days will most likely be greater than a step measured between two days, but if you were using step speed, you could account for this difference in location intervals.
 
+$\color{red}{\text{Awesome. +5}}$
+
 # Challenge 3 (5 points)
 
 Path straightness is a metric we can use to evaluate how tortuous of a path a tracked animal took from one point to another. We calculate straightness as the straight line distance between two points divided by the length of the path actually taken. The resulting straightness statistic takes a value between 0 and 1 where 1 indicates a straight line path and 0 represents an infinitely tortuous path.
@@ -267,6 +271,8 @@ Which panther took the most tortuous path? Which took the least tortuous path?
 
 First off, all of the panthers took fairly tortuous paths as the highest tortuosity was only 0.156 (Panther 6). Panther 1 had a particularly bad route as its tortuosity was only 0.001.
 
+$\color{red}{\text{Excellent. +5}}$
+
 # Challenge 4 (5 points)
 
 For each panther, calculate the frequency with which locations were recorded as points per day. Plot path straightness as a function of frequency (there should be 6 points on this figure, one per panther). What relationship do you notice between these two variables, and why might that pattern be occurring?
@@ -299,3 +305,6 @@ ggplot(data = tmp, aes(x = dectrate, y = tortuosity)) +
 What relationship do you notice between these two variables, and why might that pattern be occurring?
 
 Okay, so I think that I did this wrong because its not lining up perfectly, but I think I know what you are looking for here. I think the graph is supposed to show less tortuousity when fewer detections were observed over a longer time span. Detecting an individual more often in a shorter amount of time is going to result in the most tortuous path because you are observing the smaller movements that the animal makes. Conversely, failing to detect an animal over longer time spans is going to result in the least tortuous path because you are not observing the smaller movements the animal makes.
+
+
+$\color{red}{\text{Your intuition is correct. The outcome of this analysis turned out to be wonky for some reason. +5}}$
