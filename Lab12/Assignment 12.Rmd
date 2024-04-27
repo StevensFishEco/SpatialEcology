@@ -101,6 +101,8 @@ Commute distance (1337632.6)
 
 So from this single patch-to-patch distance, the Euclidean distance was by far the shortest and the commute distance was by far the longest. I think that this makes sense as the Euclidean distance is essentially a straight line and circuit theory follows a path of least resistance, so theoretically, that path could snake around many high resistance cells to find a more conducive path overall. I think that the strongest difference between Euclidean distance and the other metrics will be found when there is a very long strip of highly resistant cells running perpendicular to the Euclidean path (i.e., bisecting it) and the other paths choose to go completely round that long strip. Obviously, that strip would have to be many, many times more resistant than the surrounding cells in order for the other methods to choose to go around it, but depending on the classification, I believe that is possible. Also, a highly fragmented landscape with many highly resistant cells would lead to a large difference between Euclidean distance and the other methods.
 
+$\color{red}{\text{I was hoping to see you calculate this for multiple patches and look at correlation, but good work on your reasoning. +3}}$
+
 
 # Challenge 2 (5 points)
 
@@ -185,6 +187,8 @@ Q. What are the three most common landcover types within this corridor, and does
 
 The three most common landcover types within the corridor are  Scrub/CypressSwamp (n = 231), Hardwood/HardwoodSwamp (n = 226), and  FreshwaterMarsh (n = 177). All three types are in the top half of resistance (or bottom half, depending on how you look at it), so it does make sense that those are in the best corridor. But what I really think is cool is that those three types would naturally be adjacent to each other in a lowland, swampy environment like southern Florida. So, you can see how a natural landscape feature (e.g., a large lowland swamp) has created a good movement corridor (swamps are also hard to drain and change into human-friendly landcover types, so this corridor may remain intact for a while).
 
+$\color{red}{\text{Excellent. +5}}$
+
 
 # Challenge 3 (5 points)
 
@@ -216,6 +220,8 @@ plot(passageMapT0)
 Q. What patterns do you see emerge as theta increases? Comment on the tradeoffs between biological realism and ease of conservation planning based on these three different maps of connectivity.
 
 So, theta is the degree from which the path randomly deviates from the shortest path. Therefore, as theta increases, the paths should closer resemble the Euclidean path and I think that is pretty apparent from the three plots. As theta increased, the paths converged down to a more streamlined corridor. Biologically, individual animals are unlikely to know the shortest path and all of the associated habitats between point A and point B. Also, you have to keep in mind that an individual does not necessarily have a point A and point B (they're just out there trying to make a living). So, biologically, a theta of 0 is the closest scenario to real life. However, I feel like land managers can alter the landscape in a way that would semi-naturally lead individuals to take certain paths, which may result in a non-zero theta being realistic. From a conservation planning point of view, a theta of 0 is the least realistic option because you can not protect everything (unless you're Teddy Roosevelt in the early 1900s). Therefore, I think there is definitely a trade-off between protecting the most important habitat between patches and having the ability to do so. I mean, there is a whole scientific discipline based around this exact issue and several others dabble in it occasionally.
+
+$\color{red}{\text{Great. +5}}$
 
 
 # Challenge 4 (5 points)
@@ -459,7 +465,7 @@ Q. How does the loss of patch 6 compare to the loss of patch 7 in terms of its i
 
 Okay, first off, I may have done this incorrectly because the differences in these numbers are not as large as I would suspect. However, the loss of patch 6 resulted in a much smaller decline in landscape-level connectivity than the loss of patch 7. In fact, PC increased with the loss of patch 6. I think this all makes sense as losing a poorly connected patch should have a much smaller effect on landscape-level connectivity than the loss of a well-connected patch.
 
-
+$\color{red}{\text{Nope, I think you got it right. +5}}$
 
 
 
