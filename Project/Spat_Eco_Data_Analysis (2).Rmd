@@ -1,0 +1,457 @@
+---
+title: "Lab2_Assignment"
+output: html_document
+date: "2024-01-16"
+---
+
+
+### Packages ###
+
+We will start by loading all of the packages that we will be using. Note that I have "turned off" all returns from this chunk. Therefore, if something does not load properly, you will not know unless you check.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
+require(tidyverse)
+require(sf)
+require(tigris)
+require(geodata)
+require(terra)
+require(colorspace)
+require(tidyterra)
+require(ggnewscale)
+require(cowplot)
+require(ggspatial)
+require(ggpubr)
+require(gridExtra)
+require(readr)
+require(nhdplusTools)
+require(devtools)
+install_github('USEPA/StreamCatTools')
+require(StreamCatTools)
+
+require(dismo)
+require(predicts)
+require(mgcv)
+require(maxnet)
+require(spatialEco)
+require(enmSdmX)
+
+```
+
+### Occurence data ###
+
+Most of these occurrence data are publicly available, but some are from a recently completed graduate project at the University of Arkansas, Pine Bluff (Hartman 2022). I have uploaded them to GitHub for the purposes of this project, but future use of these data will need to be approved by Maxwell Hartman (Arkansas Game and Fish Commission) and Steve Lochmann (University of Arkansas, Pine Bluff).
+
+We will start by reading in the data from GitHub using the read_csv function in the readr package. We will then plot each location by "Present".
+
+```{r}
+
+PBlocs = read_csv("https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/Paleback_Full.csv")
+
+ggplot(PBlocs, aes(x=Longitude, y=Latitude, color = Present))+
+  geom_point()
+
+```
+
+Now, we will have to manipulate the data to link each occurrence to a specific stream segment. First, we will make the location data a spatial object using the st_as_sf function in the sf package. Then, we will link each location with a COMID using the sc_get_comid function from the StreamCatTools package.
+
+```{r}
+
+# Make it a spatial object
+
+PBlocsSf = st_as_sf(PBlocs, coords=c('Longitude', 'Latitude'), crs=4269)
+
+# Lets make a dummy column to fill with COMIDs
+
+PBlocsSf$COMID <- 0
+
+# Here, we will get the centroid of each linestring
+
+PBlocsSf <- st_centroid(PBlocsSf)
+
+# This function links each point to a COMID
+
+for (i in 1:nrow(PBlocsSf)){
+  PBlocsSf[i, "COMID"] = discover_nhdplus_id(PBlocsSf[i,])
+}
+
+```
+
+### Basin and Flowlines ###
+
+Our occurrences are now linked to a stream segment via the COMID.
+
+Next, we will read in the basin polygon and flowlines and then link them to COMIDs so that we can retrieve environmental data across the entire basin. These data are from the National Hydrography Dataset (NHD) and are available for download from the USGS. I have uploaded the data to GitHub for this project. First, we will read in the basin polygon using the st_read function in the sf package. 
+
+```{r}
+
+# Read in basin polygon
+
+Basin <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/Basin/WBDHU6.shp")
+
+# Check the projection
+
+st_crs(Basin)$proj4string
+
+# Lets quickly plot it
+
+plot(st_geometry(Basin))
+
+```
+
+Next, we will read in the flowlines using the st_read function in the sf package and make them sf objects using the st_as_sf functon in the sf package. The flowlines are from two different HUC 8 catchments, the Ouachita Headwaters (08040101) and the Upper Oauchita (08040102). I have combined them in ArcGIS and uploaded the resulting output to GitHub for this project. Moving forward, I would like to be able to directly load all of the NHD flowlines into R and mask with the HUC 8 code (maybe even HUC 12 codes). This will be a future endeavor, however.
+
+```{r}
+
+# Read in flowlines
+
+stsegs <- st_read("/vsicurl/https://raw.githubusercontent.com/StevensFishEco/SpatialEcology/main/Project/Data/V2/Export_Output.shp")
+
+# Remove Z and M ranges from stream segments (required to make them spatial objects)
+
+stsegs = st_zm(stsegs)
+
+# Make sf object
+
+stsegs <- st_as_sf(stsegs)
+
+```
+
+Next, we will get a COMID for each stream segment so that we can retrieve environmental data across the entire catchment. To do this, we will use the sc_get_comid function in the StreamCatTools package. 
+
+To get a COMID for each stream segment, we need a point for each stream segment, but that point cannot be a node where two stream segments meet. To solve this issue, we will approximate the center of each stream segment with the st_centroid function in the sf package. The sc_get_comid function in the StreamCatTools package will return a linestring of COMIDs that we can put  back into the main spatial object.
+
+```{r}
+
+# Get COMIDs for each stream segment
+
+tmpstsegs <- st_centroid(stsegs)
+
+tmpp <- sc_get_comid(tmpstsegs)
+
+# Put the COMIDs back into the flowlines
+
+stsegs$COMID <- strsplit(tmpp, ",")[[1]]
+
+# How many are unique? So we have a third of the total COMIDs... that is not good
+
+summary(unique(stsegs$COMID))
+
+```
+
+#### Linking environmental data ####
+
+Now that each stream segment has an associated COMID (even though they are not exact in this particular case), we can now link some environmental data to each stream segment. For this, we'll use the StreamCat database from the EPA through the StreamCatTools package. Note that any steam segment data identified by the COMID can now be linked to our stream segments (i.e., NHD VAA data).
+
+```{r}
+
+## Here, we are first getting environmental data from the StreamCat database with the sc_get_data function and then merging that data back into the main sf object by the COMID.
+
+segsvar <- sc_get_data(comid = stsegs$COMID, aoi='catchment', metric='BFI,Precip8110,Elev,HUDen2010')
+
+stsegsf <- merge(stsegs, segsvar, by = "COMID")
+
+# Lets quickly plot the flowlines to make sure that it still looks right.
+
+# First, we will check the projections
+
+st_crs(stsegsf)$proj4string
+st_crs(PBlocsSf)$proj4string
+PBlocsSf = st_transform(PBlocsSf, st_crs(stsegsf))
+
+# Now, lets plot it
+
+ggplot()+
+  geom_sf(data = stsegsf, color = "lightblue") +
+  geom_sf(data = PBlocsSf, aes(color = Present))
+
+# now lets check for any multicolinearity
+
+EnvCor <- data.frame(catchmentarea = stsegsf$CATAREASQKM, Elevation = stsegsf$ELEVCAT, BFI = stsegsf$BFICAT, HumanDen = stsegsf$HUDEN2010CAT, Precipitation = stsegsf$PRECIP8110CAT)
+
+cor(EnvCor)
+
+```
+
+
+### Modeling ###
+
+Now that we know everything looks good spatially, we will go ahead and do some habitat modeling. First, we will need to separate our original occurrence data to present locations and absent locations. 
+
+```{r}
+
+# Break present and absent from PB data
+
+PalePres = PBlocsSf %>% filter(Present==1)
+PaleAbs = PBlocsSf %>% filter(Present==0)
+
+presSegs <- stsegsf %>%
+      filter(COMID %in% PalePres$COMID)
+
+presSegs$Present = 1
+
+# summary data for paper
+
+modal(presSegs$StreamOrde)
+mean(presSegs$CATAREASQKM)
+mean(presSegs$ELEVCAT)
+mean(presSegs$HUDEN2010CAT)
+mean(presSegs$BFICAT)
+mean(presSegs$PRECIP8110CAT)
+
+
+
+
+```
+
+Next, we will randomly select 200 stream segments to serve as background locations (i.e., pseudo-absences). Finally, we will merge the present and background locations to fit our models.
+
+```{r}
+
+# Background points
+
+set.seed(73)
+
+backSegs <- dplyr::slice_sample(stsegsf %>% filter(!COMID %in% presSegs$COMID), n = 200)
+
+backSegs$Present <- 0
+
+
+presbackplot <- ggplot()+
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = stsegsf) +
+  geom_sf(data = backSegs, color = "red") +
+  geom_sf(data = presSegs, color='green') +
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-94.25, -93.50, -92.75), labels = scales::label_number(accuracy = 0.01)) +
+  scale_y_continuous(breaks = c(33.75, 34.25, 34.75), labels = scales::label_number(accuracy = 0.01))+
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  annotation_north_arrow(location = "br", which_north = "true", style = north_arrow_fancy_orienteering())
+
+#ggsave(filename = "PresBackPlot.tiff", plot = presbackplot, scale = 1, width = 7.25, height = 7.25, units = "in", dpi = "retina")
+
+# Were any previously-sampled stream segments randomly selected as background stream segments?
+
+tmp <- st_equals(presSegs, backSegs)
+
+# Lets put the present and background stream segments together.
+
+PresBackSegs = rbind(presSegs, backSegs)
+
+# For some reason, the model was having issues with the data as a spatial object, so we will convert to a data frame.
+
+PresBackSegs <- as.data.frame(PresBackSegs)
+
+```
+
+Now that we have a data frame of presence and background stream segments identifiable by COMID and associated with environmental data, we can actually fit a habitat model. Here, we are modeling with maximum entropy (i.e., MaxEnt) using the maxnet function in the maxnet package. 
+
+```{r}
+
+# The maxnet function needs a subset of locations that were occupied.
+
+pbVect = PresBackSegs$Present
+
+# The maxnet function also requires the environmental variables to be specified.
+
+covs <- PresBackSegs %>% dplyr::select(StreamOrde, CATAREASQKM:PRECIP8110CAT)
+
+# Here, we will actually fit the MaxEnt model.
+
+maxentModel = maxnet(p = pbVect,
+                     data= covs,
+                     regmult = 1,
+                     classes='lqpht')
+
+# Here, we will plot the regressions for each variable.
+
+plot(maxentModel, type='logistic')
+
+```
+
+Now, we will project the model over across the entire catchment using the predictMaxnet function in the enmSdmX package and then plot the data to identify any potential outliers (recall that this is non-spatial data so it will be a basic scatter plot).
+
+```{r}
+
+Suitability = predictMaxNet(maxentModel, as.data.frame(stsegsf), type='logistic')
+
+plot(Suitability)
+
+```
+
+Now, we can combine the model predictions and the main spatial object and plot the model predicted habitat suitability across the catchment from the spatial object (i.e., the plot will be show the actual stream segments).
+
+```{r}
+
+projected <- cbind(stsegsf, Suitability)
+
+proj <- ggplot()+
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = projected, aes(color = Suitability)) +
+  scale_color_viridis_c(option = "viridis") +
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-94.25, -93.50, -92.75), labels = scales::label_number(accuracy = 0.01)) +
+  scale_y_continuous(breaks = c(33.75, 34.25, 34.75), labels = scales::label_number(accuracy = 0.01))+
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  annotation_north_arrow(location = "br", which_north = "true", style = north_arrow_fancy_orienteering())
+
+#ggsave(filename = "ProjectedPlot.tiff", plot = proj, scale = 1, width = 7.25, height = 7.25, units = "in", dpi = "retina")
+
+```
+
+
+### Model performance and validation ###
+
+
+Now that we have fit a MaxEnt model and projected it across the catchment, we can assess how well our model performs. We will do this by calculating the Boyce index for a series of cross-validations and averaging it across all.
+
+```{r}
+
+require(ecospat)
+
+set.seed(73)
+
+presSegsdf <- as.data.frame(presSegs)
+
+backSegsdf <- as.data.frame(backSegs)
+
+nFolds = 4
+kfoldPres = kfold(presSegsdf, k=nFolds)
+kfoldBack = kfold(backSegsdf, k=nFolds)
+
+boyceVals = rep(NA, nFolds)
+
+for(i in 1:nFolds){
+  valPres = presSegsdf[kfoldPres==i,]
+  
+  trainPres = presSegsdf[kfoldPres!=i,]
+  trainBack = backSegsdf[kfoldBack!=i,]
+  trainBoth = rbind(trainPres, trainBack)
+  
+  Model2 = maxnet(p = pbVect, data= covs, regmult = 1, classes='lqpht')
+
+  valData = data.frame('ID' = 1:nrow(valPres), COMID = valPres$COMID) %>% 
+  mutate(obs = valPres$Present,
+         MEVal = predict(Model2, valPres %>% dplyr::select(StreamOrde, CATAREASQKM:PRECIP8110CAT), type='logistic'))
+  
+boyceVals[i] = ecospat.boyce(fit = Suitability, obs=valData[,4], res=100, PEplot=F)$cor
+
+}
+
+mean(boyceVals)
+
+```
+
+### Study Site Map ###
+
+Now, we will construct a nice map of our study area with the associated occurrences as points and then improve our projection map from our model results. First, we will get a polygon of the state of Arkansas. We can pull a polygon of any state from the tigris package. If for some reason you need state data from specific years (i.e., not just the polygon), you can specify the year in the states function. Here, we just need the polygon for mapping purposes.
+
+```{r}
+
+arkansas = states() %>% 
+  filter(NAME=='Arkansas')
+
+# Lets check the projection
+
+st_crs(arkansas)$proj4string
+
+# Lets change the projection to match the flowlines
+
+arkansas = st_transform(arkansas, st_crs(stsegsf))
+
+```
+
+
+Lets throw everything together for the small map (hint: it is very ugly at the moment).
+
+```{r}
+ggplot()+
+  geom_sf(data = st_geometry(arkansas), fill = "white") +
+  geom_sf(data = st_geometry(Basin), fill = "gray95") +
+  geom_sf(data = st_geometry(stsegsf), color = "darkblue")
+
+```
+
+Lets go zoomed out
+
+```{r}
+zoomedOut = ggplot()+
+  geom_sf(data = arkansas, fill = "white", color = "black", linewidth = 0.5)+
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.1)
+
+zoomedOut
+```
+
+Now to clean it up a little bit...
+
+```{r}
+zoomedOut = zoomedOut +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank(), axis.ticks.y = element_blank(), axis.ticks.x = element_blank(), panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1), plot.margin = margin(t = 0, r = 0, b = 0, l = 0))
+
+zoomedOut
+```
+
+Lets go zoomed in
+
+```{r}
+zoomedIn = ggplot()+
+  geom_sf(data = Basin, fill = "gray90", color = "black", linewidth = 0.5) 
+
+zoomedIn
+```
+
+Clean it up...
+
+```{r}
+zoomedIn = zoomedIn+
+  new_scale_fill()+
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)) +
+  scale_x_continuous(breaks = c(-94.25, -93.50, -92.75), labels = scales::label_number(accuracy = 0.01)) +
+  scale_y_continuous(breaks = c(33.75, 34.25, 34.75), labels = scales::label_number(accuracy = 0.01))+
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  annotation_north_arrow(location = "br", which_north = "true", style = north_arrow_fancy_orienteering())
+
+zoomedIn
+```
+
+Now lets add a bunch of stuff to our blank canvas...
+
+```{r}
+
+zoomedIn = zoomedIn +
+  geom_sf(data = stsegsf, aes(color = as.factor(StreamOrde))) +
+  scale_colour_brewer(palette = "Blues") +
+  theme_bw()+
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.text.y = element_text(angle = 0, vjust = 0.5, size = 10, color = "black"), axis.line = element_line(color = "black"), panel.border = element_rect(colour = "black", fill = NA, linewidth = 1), legend.position = "none") +
+  scale_x_continuous(breaks = c(-94.25, -93.50, -92.75), labels = scales::label_number(accuracy = 0.01)) +
+  scale_y_continuous(breaks = c(33.75, 34.25, 34.75), labels = scales::label_number(accuracy = 0.01))+
+  annotation_scale(location = "bl", width_hint = 0.25, unit_category = "metric", style = "ticks") +
+  annotation_north_arrow(location = "br", which_north = "true", style = north_arrow_fancy_orienteering())
+ 
+zoomedIn
+
+
+#ggsave(filename = "StrOrdPlot.tiff", plot = zoomedIn, scale = 1, width = 7.25, height = 7.25, units = "in", dpi = "retina")
+
+
+```
+
+
+### Putting the primary map together
+
+```{r}
+
+map_with_inset <-
+  ggdraw(zoomedIn) +
+  draw_plot(zoomedOut, x = 0.62, y = 0.06, width = 0.345, height = 0.40, halign = 0, valign = 0)
+
+map_with_inset
+
+## Note: the inset map does not look good at the moment, but that's because it got wonky later with ggarrange, so I have modified it to look better in the end product rather than now. This will come up several times later.
+```
+
